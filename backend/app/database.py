@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
+# pyrefly: ignore [missing-import]
 from app.config import settings
 
 # Create async database engine

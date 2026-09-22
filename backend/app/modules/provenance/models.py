@@ -1,25 +1,51 @@
-from sqlmodel import SQLModel, Field, JSON
+from sqlmodel import SQLModel, Field, Column, JSON
 from uuid import UUID, uuid4
-from datetime import datetime
-from typing import Optional, Dict, Any
+from datetime import datetime, timezone
+from typing import Optional, Dict, Any, List
+
+
+# ── DB Tables ───────────────────────────────────────────────
 
 class ProvenanceRecord(SQLModel, table=True):
     __tablename__ = "provenance_records"
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    material_name: str
-    origin_facility_id: Optional[UUID] = Field(default=None, foreign_key="facilities.id")
-    producer_id: UUID = Field(foreign_key="organizations.id")
-    quantity: float
-    unit: str
-    carbon_footprint_total: float = Field(default=0.000)
-    esg_criteria_flags: Optional[Dict[str, Any]] = Field(default=None, sa_type=JSON) # JSONB
-    signature_verification: bool = Field(default=True)
-    status: str = Field(default="draft")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    organization_id: UUID = Field(foreign_key="organizations.id")
+    type: str = Field(default="self_reported", max_length=50)  # self_reported | audited | verified
+    verifying_party: Optional[str] = Field(default=None, max_length=255)
+    evidence_url: Optional[str] = Field(default=None, max_length=512)
+    verified_at: Optional[datetime] = None
+    expiration_date: Optional[datetime] = None
+    payload: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 
 class ListingProvenanceSnapshot(SQLModel, table=True):
     __tablename__ = "listing_provenance_snapshots"
 
-    listing_id: UUID = Field(primary_key=True, foreign_key="listings.id")
-    provenance_id: UUID = Field(primary_key=True, foreign_key="provenance_records.id")
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    listing_id: UUID = Field(foreign_key="listings.id")
+    confidence_score: float = Field(default=0.0)
+    provenance_grade: str = Field(default="self_reported", max_length=50)  # self_reported | audited | verified
+    active_provenance_records: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+
+
+# ── Pydantic Schemas ────────────────────────────────────────
+
+class ProvenanceRecordCreate(SQLModel):
+    type: str = "self_reported"
+    verifying_party: Optional[str] = None
+    evidence_url: Optional[str] = None
+    payload: Optional[Dict[str, Any]] = None
+
+
+class ProvenanceRecordRead(SQLModel):
+    id: UUID
+    organization_id: UUID
+    type: str
+    verifying_party: Optional[str] = None
+    evidence_url: Optional[str] = None
+    verified_at: Optional[datetime] = None
+    expiration_date: Optional[datetime] = None
+    payload: Optional[Dict[str, Any]] = None
+    created_at: datetime

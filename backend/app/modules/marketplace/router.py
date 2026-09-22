@@ -1,92 +1,70 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
+from typing import List, Optional
+from uuid import UUID
+
 from app.database import get_db
 from app.dependencies import get_current_user, require_role
 from app.auth.models import CurrentUser
-from app.modules.marketplace.models import Listing
-from app.modules.provenance.models import ListingProvenanceSnapshot, ProvenanceRecord
-from typing import List, Dict, Any
+from app.modules.marketplace.models import ListingCreate, ListingRead
+from app.modules.marketplace import service
 
-router = APIRouter(prefix="/marketplace", tags=["B2B Marketplace & Offerings"])
+router = APIRouter(prefix="/marketplace", tags=["B2B Marketplace"])
 
-@router.post("/listings", response_model=Listing)
+
+@router.post("/listings", response_model=ListingRead)
 async def create_listing(
-    title: str,
-    price: float,
-    unit: str,
-    quantity: float,
-    carbon_index: float,
-    description: str | None = None,
-    provenance_ids: List[str] | None = None,
-    current_user: CurrentUser = Depends(require_role(["supplier", "manufacturer"])),
-    db: AsyncSession = Depends(get_db)
+    data: ListingCreate,
+    provenance_record_ids: Optional[List[UUID]] = Query(default=None),
+    current_user: CurrentUser = Depends(
+        require_role(["raw_material_supplier", "manufacturer"])
+    ),
+    db: AsyncSession = Depends(get_db),
 ):
     """
-    Publishes an available cargo batch or component line to the
-    ecosystem-wide marketplace, complete with provenance tags.
+    Creates a material or finished goods entry on the marketplace.
+    Optionally attaches provenance records as listing snapshots.
     """
-    listing = Listing(
-        seller_id=current_user.organization_id,
-        title=title,
-        description=description,
-        price=price,
-        unit=unit,
-        quantity_available=quantity,
-        carbon_equivalent_index=carbon_index,
-        status="active"
+    listing = await service.create_listing(
+        data, current_user.organization_id, db, provenance_record_ids
     )
-    db.add(listing)
-    await db.commit()
-    await db.refresh(listing)
-    
-    # Associate provenances if provided
-    if provenance_ids:
-        for p_id in provenance_ids:
-            snapshot = ListingProvenanceSnapshot(
-                listing_id=listing.id,
-                provenance_id=p_id
-            )
-            db.add(snapshot)
-        await db.commit()
-        
     return listing
 
-@router.get("/listings", response_model=List[Listing])
-async def list_active_listings(
-    db: AsyncSession = Depends(get_db)
-):
-    """Lists all active material offerings posted across BizzNet."""
-    query = select(Listing).where(Listing.status == "active")
-    result = await db.execute(query)
-    return result.scalars().all()
 
-@router.get("/listings/{listing_id}", response_model=Dict[str, Any])
-async def get_listing_details(
-    listing_id: str,
-    db: AsyncSession = Depends(get_db)
+@router.get("/listings", response_model=List[ListingRead])
+async def list_active_listings(
+    category: Optional[str] = Query(default=None),
+    min_price: Optional[float] = Query(default=None),
+    max_price: Optional[float] = Query(default=None),
+    max_moq: Optional[float] = Query(default=None),
+    provenance_grade: Optional[str] = Query(default=None),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Retrieves full specification card for an offering including verified ESG origin logs."""
-    # Find Listing
-    listing_query = select(Listing).where(Listing.id == listing_id)
-    listing_result = await db.execute(listing_query)
-    listing = listing_result.scalar_one_or_none()
-    
-    if not listing:
+    """
+    Queries active marketplace listings with filter parameters:
+    category, price range, MOQ ceiling, and provenance grade.
+    """
+    listings = await service.list_listings(
+        db,
+        category=category,
+        min_price=min_price,
+        max_price=max_price,
+        max_moq=max_moq,
+        provenance_grade=provenance_grade,
+    )
+    return listings
+
+
+@router.get("/listings/{listing_id}")
+async def get_listing_details(
+    listing_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieves listing details including verified ESG provenance snapshots."""
+    result = await service.get_listing_detail(listing_id, db)
+    if not result:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Listing not found."
+            detail="Listing not found.",
         )
-        
-    # Get associated provenance snap records
-    snap_query = select(ProvenanceRecord).join(
-        ListingProvenanceSnapshot, ListingProvenanceSnapshot.provenance_id == ProvenanceRecord.id
-    ).where(ListingProvenanceSnapshot.listing_id == listing_id)
-    
-    snap_result = await db.execute(snap_query)
-    provenances = snap_result.scalars().all()
-    
-    return {
-        "listing": listing,
-        "provenances": provenances
-    }
+    return result

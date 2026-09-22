@@ -1,57 +1,67 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from app.database import get_db
-from app.dependencies import get_current_user
-from app.auth.models import CurrentUser
-from app.modules.network.models import Organization, Facility
 from typing import List
+
+# pyrefly: ignore [missing-import]
+from app.database import get_db
+# pyrefly: ignore [missing-import]
+from app.dependencies import get_current_user
+# pyrefly: ignore [missing-import]
+from app.auth.models import CurrentUser
+# pyrefly: ignore [missing-import]
+from app.modules.network.models import (
+    OrganizationCreate,
+    OrganizationRead,
+    FacilityCreate,
+    FacilityRead,
+)
+# pyrefly: ignore [missing-import]
+from app.modules.network import service
 
 router = APIRouter(prefix="/network", tags=["Network & Onboarding"])
 
-# Counterpart visibility logic by role
-COUNTERPART_MAPPING = {
-    "supplier": ["manufacturer", "transporter", "auditor"],
-    "manufacturer": ["supplier", "distributor", "transporter", "auditor"],
-    "distributor": ["manufacturer", "retailer", "transporter", "auditor"],
-    "retailer": ["manufacturer", "distributor", "transporter", "auditor"],
-    "transporter": ["supplier", "manufacturer", "distributor", "retailer", "auditor"],
-    "auditor": ["supplier", "manufacturer", "distributor", "retailer", "transporter"],
-    "admin": ["supplier", "manufacturer", "distributor", "retailer", "transporter", "auditor"]
-}
 
-@router.get("/counterparts", response_model=List[Organization])
+@router.post("/register", response_model=OrganizationRead)
+async def register_organization(
+    data: OrganizationCreate,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Registers organization attributes and assigns supply-chain role context."""
+    # pyrefly: ignore [missing-import]
+    from app.modules.network.service import VALID_ROLES
+
+    if data.role not in VALID_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid role. Must be one of: {sorted(VALID_ROLES)}",
+        )
+
+    org = await service.register_organization(data, str(current_user.id), db)
+    return org
+
+
+@router.get("/counterparts", response_model=List[OrganizationRead])
 async def get_counterparts(
     current_user: CurrentUser = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
-    Returns verified trading partner organization profiles matched
-    to your specific role's supply chain boundaries.
+    Dynamically lists potential matching organizations within compatible
+    sectors based on the current user's supply-chain role.
     """
-    allowed_roles = COUNTERPART_MAPPING.get(current_user.role, [])
-    
-    query = select(Organization).where(Organization.role.in_(allowed_roles))
-    result = await db.execute(query)
-    partners = result.scalars().all()
+    partners = await service.get_counterparts(current_user.role, db)
     return partners
 
-@router.post("/register-facility", response_model=Facility)
+
+@router.post("/register-facility", response_model=FacilityRead)
 async def register_facility(
-    name: str,
-    carbon_factor: float,
-    location_details: dict | None = None,
+    data: FacilityCreate,
     current_user: CurrentUser = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Allows organizations to register local logistics or storage sites."""
-    facility = Facility(
-        organization_id=current_user.organization_id,
-        name=name,
-        location=location_details,
-        carbon_intensity_factor=carbon_factor
+    """Registers a facility (farm, refinery, warehouse) under the user's organization."""
+    facility = await service.register_facility(
+        data, str(current_user.organization_id), db
     )
-    db.add(facility)
-    await db.commit()
-    await db.refresh(facility)
     return facility

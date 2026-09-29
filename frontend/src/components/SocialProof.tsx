@@ -35,29 +35,32 @@ const complianceBadges = [
 
 export default function SocialProof() {
   return (
-    <section className="bg-surface py-24">
+    <section className="bg-[#FAF8F5] py-24 border-b border-[#E8E0D4]">
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
-        <h2 className="text-3xl font-bold tracking-tight text-text-primary md:text-4xl">
-          Trusted across the chain.
-        </h2>
-        <p className="mt-4 font-mono text-sm text-text-tertiary" data-synthetic="true">
-          Synthetic testimonials — real pilot data pending.
-        </p>
+        <div className="flex flex-col gap-2">
+          <span className="font-mono text-xs font-semibold text-[#6B5B3E] uppercase tracking-wider">Social Proof</span>
+          <h2 className="text-3xl font-bold tracking-tight text-[#2C2418] md:text-4xl">
+            Trusted across the chain.
+          </h2>
+          <p className="mt-2 font-mono text-xs text-[#A89B8A]" data-synthetic="true">
+            Synthetic testimonials — real pilot data pending.
+          </p>
+        </div>
 
         <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-3">
           {testimonials.map((t) => (
             <blockquote
               key={t.name}
-              className="flex flex-col rounded-lg border border-border-subtle bg-surface-elevated p-6"
+              className="flex flex-col rounded-xl border border-[#E8E0D4] bg-white p-6 shadow-xs"
             >
-              <p className="flex-1 text-sm leading-relaxed text-text-secondary">
+              <p className="flex-1 text-sm leading-relaxed text-[#5C5040]">
                 &ldquo;{t.quote}&rdquo;
               </p>
-              <footer className="mt-6 border-t border-border-subtle pt-4">
-                <p className="text-sm font-semibold text-text-primary">
+              <footer className="mt-6 border-t border-[#E8E0D4] pt-4">
+                <p className="text-sm font-semibold text-[#2C2418]">
                   {t.name}
                 </p>
-                <p className="font-mono text-xs text-text-tertiary">
+                <p className="font-mono text-xs text-[#A89B8A]">
                   {t.role}, {t.company}
                 </p>
               </footer>
@@ -65,15 +68,15 @@ export default function SocialProof() {
           ))}
         </div>
 
-        <div className="mt-16 border-t border-border-subtle pt-8">
-          <p className="font-mono text-xs uppercase tracking-wider text-text-tertiary">
+        <div className="mt-16 border-t border-[#E8E0D4] pt-8">
+          <p className="font-mono text-xs uppercase tracking-wider text-[#A89B8A]">
             Compliance frameworks supported
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
             {complianceBadges.map((badge) => (
               <span
                 key={badge}
-                className="rounded-md border border-border-subtle bg-surface-elevated px-4 py-2 font-mono text-sm text-text-secondary"
+                className="rounded-lg border border-[#E8E0D4] bg-white px-4 py-2 font-mono text-sm text-[#5C5040] shadow-xs"
               >
                 {badge}
               </span>

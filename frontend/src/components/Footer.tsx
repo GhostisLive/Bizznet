@@ -1,3 +1,5 @@
+import { ShieldCheck } from "lucide-react";
+
 export default function Footer() {
   const columns = [
     {
@@ -19,26 +21,27 @@ export default function Footer() {
   ];
 
   return (
-    <footer className="border-t border-border-subtle bg-background">
+    <footer className="bg-[#FAF8F5]">
       <div className="mx-auto max-w-7xl px-6 py-16 lg:px-8">
         <div className="grid grid-cols-2 gap-8 md:grid-cols-4 lg:grid-cols-5">
           <div className="col-span-2 md:col-span-4 lg:col-span-1 lg:pr-8">
             <a
               href="/"
-              className="flex items-center gap-2 font-sans text-lg font-bold text-text-primary"
+              className="flex items-center gap-2.5 font-sans text-lg font-bold text-[#2C2418]"
             >
-              <span className="block size-2 rounded-full bg-accent" />
-              BizzNet
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#6B5B3E] text-white shadow-xs">
+                <ShieldCheck size={16} />
+              </div>
+              <span>Bizz<span className="text-[#6B5B3E]">Net</span></span>
             </a>
-            <p className="mt-3 max-w-xs text-sm text-text-secondary leading-relaxed">
-              Provenance-priced B2B supply chain. Every material flow carries
-              its verification.
+            <p className="mt-3 max-w-xs text-sm text-[#5C5040] leading-relaxed">
+              Provenance-priced B2B supply chain. Every material flow carries its verification.
             </p>
           </div>
 
           {columns.map((col) => (
             <div key={col.heading}>
-              <h4 className="font-mono text-xs uppercase tracking-wider text-text-tertiary">
+              <h4 className="font-mono text-xs uppercase tracking-wider text-[#A89B8A]">
                 {col.heading}
               </h4>
               <ul className="mt-4 space-y-2.5">
@@ -46,7 +49,7 @@ export default function Footer() {
                   <li key={link}>
                     <a
                       href="#"
-                      className="text-sm text-text-secondary transition-colors hover:text-text-primary"
+                      className="text-sm text-[#5C5040] transition-colors hover:text-[#2C2418]"
                     >
                       {link}
                     </a>
@@ -57,11 +60,11 @@ export default function Footer() {
           ))}
         </div>
 
-        <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-border-subtle pt-8 md:flex-row">
-          <p className="font-mono text-xs text-text-tertiary">
+        <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-[#E8E0D4] pt-8 md:flex-row">
+          <p className="font-mono text-xs text-[#A89B8A]">
             &copy; {new Date().getFullYear()} BizzNet. All rights reserved.
           </p>
-          <p className="font-mono text-xs text-text-tertiary">
+          <p className="font-mono text-xs text-[#A89B8A]">
             Built for transparent supply chains.
           </p>
         </div>

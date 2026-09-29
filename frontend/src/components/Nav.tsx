@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Menu, X } from "lucide-react";
+import { Menu, X, ShieldCheck } from "lucide-react";
 
 const links = ["Platform", "Provenance", "Network", "Pricing"] as const;
 
@@ -11,20 +11,22 @@ export default function Nav() {
   return (
     <nav
       aria-label="Main navigation"
-      className="fixed top-0 inset-x-0 z-50 bg-background/80 backdrop-blur-md border-b border-border-subtle"
+      className="fixed top-0 inset-x-0 z-50 bg-white/90 backdrop-blur-md border-b border-[#E8E0D4] shadow-xs"
     >
       <div className="mx-auto max-w-7xl flex items-center justify-between px-6 h-16">
-        <a href="/" className="flex items-center gap-2 font-sans font-bold text-xl tracking-tight text-text-primary">
-          <span className="block size-2 rounded-full bg-accent" />
-          BizzNet
+        <a href="/" className="flex items-center gap-2.5 font-sans font-bold text-xl tracking-tight text-[#2C2418]">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#6B5B3E] text-white shadow-xs">
+            <ShieldCheck size={18} />
+          </div>
+          <span>Bizz<span className="text-[#6B5B3E]">Net</span></span>
         </a>
 
-        <ul className="hidden md:flex items-center gap-8">
+        <ul className="hidden md:flex items-center gap-1">
           {links.map((link) => (
             <li key={link}>
               <a
                 href={`#${link.toLowerCase()}`}
-                className="relative py-1 font-sans font-medium text-sm text-text-secondary transition-colors duration-200 hover:text-text-primary after:absolute after:bottom-0 after:left-0 after:h-px after:w-0 after:bg-text-primary after:transition-all after:duration-200 hover:after:w-full"
+                className="px-4 py-2 rounded-md font-sans font-medium text-sm text-[#5C5040] transition-colors duration-200 hover:text-[#2C2418] hover:bg-[#FAF8F5]"
               >
                 {link}
               </a>
@@ -32,18 +34,18 @@ export default function Nav() {
           ))}
         </ul>
 
-        <div className="hidden md:flex items-center gap-4">
+        <div className="hidden md:flex items-center gap-3">
           <a
             href="/login"
-            className="font-sans font-medium text-sm text-text-secondary hover:text-text-primary transition-colors"
+            className="font-sans font-medium text-sm text-[#5C5040] hover:text-[#2C2418] transition-colors px-4 py-2"
           >
             Sign In
           </a>
           <a
-            href="/signup"
-            className="inline-block font-sans font-medium text-sm bg-cta-bg text-cta-text rounded-md px-5 py-2 transition-colors duration-200 hover:bg-cta-bg/90"
+            href="/dashboard?role=manufacturer"
+            className="inline-flex items-center gap-2 font-sans font-semibold text-sm bg-[#2C2418] hover:bg-[#4E4433] text-white rounded-lg px-5 py-2.5 transition-all shadow-xs"
           >
-            Register Node (Sign Up)
+            View Dashboard
           </a>
         </div>
 
@@ -51,33 +53,33 @@ export default function Nav() {
           type="button"
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
-          className="md:hidden p-2 text-text-primary"
+          className="md:hidden p-2 rounded-lg text-[#2C2418] hover:bg-[#FAF8F5] transition-colors"
           onClick={() => setOpen(!open)}
         >
-          {open ? <X size={22} /> : <Menu size={22} />}
+          {open ? <X size={20} /> : <Menu size={20} />}
         </button>
       </div>
 
       <div
         className={`md:hidden overflow-hidden transition-[max-height] duration-300 ease-in-out ${open ? "max-h-80" : "max-h-0"}`}
       >
-        <div className="border-t border-border-subtle px-6 py-4 flex flex-col gap-4">
+        <div className="border-t border-[#E8E0D4] px-6 py-4 flex flex-col gap-1 bg-white">
           {links.map((link) => (
             <a
               key={link}
               href={`#${link.toLowerCase()}`}
               onClick={() => setOpen(false)}
-              className="font-sans font-medium text-sm text-text-secondary transition-colors duration-200 hover:text-text-primary"
+              className="font-sans font-medium text-sm text-[#5C5040] px-3 py-2.5 rounded-lg transition-colors duration-200 hover:text-[#2C2418] hover:bg-[#FAF8F5]"
             >
               {link}
             </a>
           ))}
           <a
-            href="#request-access"
+            href="/dashboard?role=manufacturer"
             onClick={() => setOpen(false)}
-            className="inline-block text-center font-sans font-medium text-sm bg-cta-bg text-cta-text rounded-md px-5 py-2 transition-colors duration-200 hover:bg-cta-bg/90"
+            className="mt-2 inline-block text-center font-sans font-semibold text-sm bg-[#2C2418] text-white rounded-lg px-5 py-2.5 transition-all"
           >
-            Request Access
+            View Dashboard
           </a>
         </div>
       </div>

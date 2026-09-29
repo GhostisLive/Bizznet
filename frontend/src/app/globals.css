@@ -1,26 +1,31 @@
 @import "tailwindcss";
 
 :root {
-  --background: #faf8f5;
-  --foreground: #1a1a18;
-  --surface: #f2efe9;
-  --surface-elevated: #ffffff;
-  --border: #d6d0c4;
-  --border-subtle: #e8e3d9;
-  --text-primary: #1a1a18;
-  --text-secondary: #5c5a52;
-  --text-tertiary: #8a8578;
-  --verified: #1a7a4c;
-  --verified-light: #e6f4ec;
-  --verified-surface: #d0eadb;
-  --audited: #b8860b;
-  --audited-light: #fdf6e3;
-  --self-reported: #8a8578;
-  --self-reported-light: #f2efe9;
-  --accent: #1a7a4c;
-  --accent-hover: #15633e;
-  --cta-bg: #1a1a18;
-  --cta-text: #faf8f5;
+  --background: #FAF8F5;
+  --foreground: #2C2418;
+  --surface: #FFFDF9;
+  --surface-elevated: #FFFFFF;
+  --surface-hover: #F5F0E8;
+  --border: #E8E0D4;
+  --border-subtle: #F0EBE3;
+  --text-primary: #2C2418;
+  --text-secondary: #5C5040;
+  --text-tertiary: #8A7E6E;
+  --verified: #2E7D5B;
+  --verified-light: #EEF7F2;
+  --verified-surface: #D4EDDF;
+  --audited: #C68A17;
+  --audited-light: #FDF5E6;
+  --self-reported: #8A7E6E;
+  --self-reported-light: #F5F0E8;
+  --accent: #6B5B3E;
+  --accent-hover: #564A32;
+  --accent-subtle: #F5F0E8;
+  --cta-bg: #3D3425;
+  --cta-text: #FFFDF9;
+  --danger: #C44133;
+  --sidebar-bg: #3D3425;
+  --sidebar-hover: #4E4433;
 }
 
 @theme inline {
@@ -28,6 +33,7 @@
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
   --color-surface-elevated: var(--surface-elevated);
+  --color-surface-hover: var(--surface-hover);
   --color-border: var(--border);
   --color-border-subtle: var(--border-subtle);
   --color-text-primary: var(--text-primary);
@@ -42,14 +48,22 @@
   --color-self-reported-light: var(--self-reported-light);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
+  --color-accent-subtle: var(--accent-subtle);
   --color-cta-bg: var(--cta-bg);
   --color-cta-text: var(--cta-text);
-  --font-sans: var(--font-archivo);
-  --font-mono: var(--font-ibm-plex-mono);
+  --color-danger: var(--danger);
+  --color-sidebar-bg: var(--sidebar-bg);
+  --color-sidebar-hover: var(--sidebar-hover);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
 }
 
 * {
   box-sizing: border-box;
+}
+
+html {
+  font-size: 17px;
 }
 
 body {
@@ -58,11 +72,13 @@ body {
   font-family: var(--font-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  line-height: 1.6;
+  letter-spacing: -0.01em;
 }
 
 ::selection {
-  background: var(--verified-surface);
-  color: var(--text-primary);
+  background: #E8E0D4;
+  color: #2C2418;
 }
 
 :focus-visible {
@@ -76,10 +92,11 @@ input::placeholder {
 
 ::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--surface);
+  background: var(--background);
 }
 
 ::-webkit-scrollbar-thumb {
@@ -89,24 +106,4 @@ input::placeholder {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-tertiary);
-}
-
-@keyframes fade-up {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes reveal-line {
-  from {
-    transform: scaleX(0);
-  }
-  to {
-    transform: scaleX(1);
-  }
 }

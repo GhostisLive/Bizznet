@@ -23,7 +23,6 @@ export default function SignupPage() {
     setErrorMsg(null);
 
     try {
-      // 1. Sign up user in Supabase Auth with custom metadata
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
@@ -43,7 +42,6 @@ export default function SignupPage() {
         throw new Error("Failed to register. Please try again.");
       }
 
-      // If a session is returned immediately (email confirmation disabled/auto-confirm), sync and redirect
       if (authData.session) {
         const { error: dbError } = await supabase
           .from("organizations")
@@ -61,7 +59,6 @@ export default function SignupPage() {
           router.push(`/dashboard?role=${role}`);
         }, 1500);
       } else {
-        // Email validation confirmation is required
         setSuccess(true);
       }
 
@@ -78,61 +75,53 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-text-primary flex flex-col font-sans relative">
-      {/* Visual Guide Border Lines */}
-      <div className="absolute inset-y-0 left-1/4 w-px bg-border-subtle/40 pointer-events-none hidden lg:block" />
-      <div className="absolute inset-y-0 right-1/4 w-px bg-border-subtle/40 pointer-events-none hidden lg:block" />
-
-      {/* Header */}
-      <header className="border-b border-border-subtle bg-surface px-6 py-4 flex items-center justify-between z-10">
-        <a href="/" className="flex items-center gap-2 font-sans font-bold text-lg tracking-tight">
-          <span className="block size-2.5 rounded-full bg-accent" />
-          BizzNet
+    <div className="min-h-screen bg-[#FAF8F5] text-[#2C2418] flex flex-col font-sans relative">
+      <header className="border-b border-[#E8E0D4] bg-white px-6 py-4 flex items-center justify-between z-10 shadow-xs">
+        <a href="/" className="flex items-center gap-2.5 font-sans font-bold text-lg tracking-tight text-[#2C2418]">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#6B5B3E] text-white shadow-xs">
+            <ShieldCheck size={16} />
+          </div>
+          <span>Bizz<span className="text-[#6B5B3E]">Net</span></span>
         </a>
-        <a href="/login" className="text-xs font-mono font-medium hover:text-accent transition-colors">
+        <a href="/login" className="text-xs font-mono font-semibold text-[#6B5B3E] hover:underline">
           ALREADY SIGNED? [LOG IN]
         </a>
       </header>
 
-      {/* Main Container */}
       <main className="flex-1 flex items-center justify-center p-6 z-10">
-        <div className="max-w-md w-full border border-border-subtle rounded-lg bg-surface-elevated overflow-hidden shadow-sm">
+        <div className="max-w-md w-full border border-[#E8E0D4] rounded-xl bg-white shadow-sm overflow-hidden">
           
-          <div className="border-b border-border-subtle p-6 bg-surface/30 text-center">
-            <h2 className="text-xl font-bold tracking-tight text-text-primary">Create Your BizzNet Node</h2>
-            <p className="text-xs font-mono text-text-tertiary mt-1">Independent B2B Provenance Ledger</p>
+          <div className="border-b border-[#E8E0D4] p-6 bg-[#FAF8F5] text-center">
+            <h2 className="text-xl font-bold tracking-tight text-[#2C2418]">Create Your BizzNet Node</h2>
+            <p className="text-xs font-mono text-[#8A7E6E] mt-1">Enterprise Supply Chain Platform</p>
           </div>
 
           <div className="p-6">
             {errorMsg && (
-              <div className="mb-4 p-3 rounded-md bg-self-reported-light border border-self-reported/20 text-xs font-mono text-self-reported">
+              <div className="mb-4 p-3 rounded-md bg-[#FDF0EE] border border-[#C44133]/20 text-xs font-mono text-[#C44133]">
                 [ERROR]: {errorMsg}
               </div>
             )}
 
             {success ? (
               <div className="py-8 text-center space-y-3">
-                <div className="inline-flex items-center justify-center h-10 w-10 rounded-full bg-verified-light text-verified">
+                <div className="inline-flex items-center justify-center h-10 w-10 rounded-full bg-[#EEF7F2] text-[#2E7D5B]">
                   <ShieldCheck className="h-6 w-6" />
                 </div>
-                <h3 className="font-bold text-sm text-verified">Node Registration Initiated</h3>
-                <p className="text-xs font-mono text-text-secondary leading-relaxed">
+                <h3 className="font-bold text-sm text-[#2E7D5B]">Node Registration Initiated</h3>
+                <p className="text-xs font-mono text-[#5C5040] leading-relaxed">
                   A verification link has been sent to your email. Click the link to activate your ledger access.
                 </p>
-                <div className="pt-2 text-[10px] text-text-tertiary font-mono">
-                  [Note: Local sandbox routes remain accessible below for instant review]
-                </div>
               </div>
             ) : (
               <form onSubmit={handleSignup} className="space-y-4">
                 
-                {/* Mode Selector */}
                 <div>
-                  <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase">Supply Chain Role</label>
+                  <label className="block text-xs font-mono text-[#5C5040] mb-1.5 uppercase font-medium">Supply Chain Role</label>
                   <select
                     value={role}
                     onChange={(e) => setRole(e.target.value)}
-                    className="w-full px-3.5 py-2 border border-border bg-surface rounded-md text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                    className="w-full px-3.5 py-2.5 border border-[#E8E0D4] bg-[#FAF8F5] rounded-lg text-xs text-[#2C2418] focus:outline-none focus:ring-1 focus:ring-[#6B5B3E] focus:border-[#6B5B3E]"
                   >
                     <option value="supplier">Raw Material Supplier</option>
                     <option value="manufacturer">Manufacturer / Component Assembler</option>
@@ -141,54 +130,53 @@ export default function SignupPage() {
                     <option value="transporter">Logistics & Transporter Carrier</option>
                     <option value="auditor">Third-Party Auditor</option>
                   </select>
-                  <p className="text-[10px] text-text-tertiary mt-1">This role is locked to your organization domain after signup.</p>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase">Organization Name</label>
+                  <label className="block text-xs font-mono text-[#5C5040] mb-1.5 uppercase font-medium">Organization Name</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Tata Advanced Materials"
                     value={orgName}
                     onChange={(e) => setOrgName(e.target.value)}
-                    className="w-full px-3.5 py-2 border border-border bg-surface rounded-md text-xs text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent"
+                    className="w-full px-3.5 py-2.5 border border-[#E8E0D4] bg-[#FAF8F5] rounded-lg text-xs text-[#2C2418] placeholder:text-[#A89B8A] focus:outline-none focus:ring-1 focus:ring-[#6B5B3E] focus:border-[#6B5B3E]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase">Tax Registration / VAT ID</label>
+                  <label className="block text-xs font-mono text-[#5C5040] mb-1.5 uppercase font-medium">Tax Registration / VAT ID</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. GSTIN27AAAC1234F"
                     value={taxId}
                     onChange={(e) => setTaxId(e.target.value)}
-                    className="w-full px-3.5 py-2 border border-border bg-surface rounded-md text-xs text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent"
+                    className="w-full px-3.5 py-2.5 border border-[#E8E0D4] bg-[#FAF8F5] rounded-lg text-xs text-[#2C2418] placeholder:text-[#A89B8A] focus:outline-none focus:ring-1 focus:ring-[#6B5B3E] focus:border-[#6B5B3E]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase">Work Email</label>
+                  <label className="block text-xs font-mono text-[#5C5040] mb-1.5 uppercase font-medium">Work Email</label>
                   <input
                     type="email"
                     required
                     placeholder="name@company.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-3.5 py-2 border border-border bg-surface rounded-md text-xs text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent"
+                    className="w-full px-3.5 py-2.5 border border-[#E8E0D4] bg-[#FAF8F5] rounded-lg text-xs text-[#2C2418] placeholder:text-[#A89B8A] focus:outline-none focus:ring-1 focus:ring-[#6B5B3E] focus:border-[#6B5B3E]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-mono text-text-secondary mb-1.5 uppercase">Access Password</label>
+                  <label className="block text-xs font-mono text-[#5C5040] mb-1.5 uppercase font-medium">Access Password</label>
                   <input
                     type="password"
                     required
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-3.5 py-2 border border-border bg-surface rounded-md text-xs text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent"
+                    className="w-full px-3.5 py-2.5 border border-[#E8E0D4] bg-[#FAF8F5] rounded-lg text-xs text-[#2C2418] placeholder:text-[#A89B8A] focus:outline-none focus:ring-1 focus:ring-[#6B5B3E] focus:border-[#6B5B3E]"
                   />
                 </div>
 
@@ -196,7 +184,7 @@ export default function SignupPage() {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full flex items-center justify-center gap-2 rounded bg-cta-bg hover:opacity-90 text-cta-text py-2.5 text-xs font-semibold transition-opacity disabled:opacity-50"
+                    className="w-full flex items-center justify-center gap-2 rounded-lg bg-[#2C2418] hover:bg-[#4E4433] text-white py-3 text-xs font-semibold transition-colors disabled:opacity-50 shadow-xs"
                   >
                     {loading ? (
                       <>
@@ -214,20 +202,20 @@ export default function SignupPage() {
               </form>
             )}
 
-            <div className="mt-6 pt-5 border-t border-border-subtle text-center">
-              <span className="font-mono text-[10px] text-text-tertiary block">OR SKIP TO MOCK PREVIEW</span>
+            <div className="mt-6 pt-5 border-t border-[#E8E0D4] text-center">
+              <span className="font-mono text-[10px] text-[#A89B8A] block font-medium">OR QUICK LAUNCH DASHBOARD</span>
               <div className="mt-2.5 grid grid-cols-2 gap-2">
                 <button
                   onClick={() => handleSandboxBypass("manufacturer")}
-                  className="px-2.5 py-1.5 border border-border bg-surface text-text-primary hover:bg-border-subtle rounded text-[10px] font-mono transition-colors"
+                  className="px-2.5 py-2 border border-[#E8E0D4] bg-[#FAF8F5] text-[#2C2418] hover:bg-white rounded-lg text-[11px] font-mono transition-colors font-medium shadow-xs"
                 >
-                  [Manufacturer Sandbox]
+                  Manufacturer Sandbox
                 </button>
                 <button
                   onClick={() => handleSandboxBypass("auditor")}
-                  className="px-2.5 py-1.5 border border-border bg-surface text-text-primary hover:bg-border-subtle rounded text-[10px] font-mono transition-colors"
+                  className="px-2.5 py-2 border border-[#E8E0D4] bg-[#FAF8F5] text-[#2C2418] hover:bg-white rounded-lg text-[11px] font-mono transition-colors font-medium shadow-xs"
                 >
-                  [Auditor Sandbox]
+                  Auditor Sandbox
                 </button>
               </div>
             </div>

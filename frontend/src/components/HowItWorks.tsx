@@ -37,14 +37,17 @@ const steps = [
 
 export default function HowItWorks() {
   return (
-    <section className="bg-background py-24">
+    <section className="bg-white py-24 border-b border-[#E8E0D4]">
       <div className="mx-auto max-w-5xl px-6">
-        <h2 className="max-w-2xl text-3xl font-bold tracking-tight text-text-primary md:text-4xl">
-          From registration to trade, every step carries its proof.
-        </h2>
-        <p className="mt-3 font-mono text-sm text-text-tertiary">
-          The provenance trail starts at onboarding.
-        </p>
+        <div className="flex flex-col gap-2">
+          <span className="font-mono text-xs font-semibold text-[#6B5B3E] uppercase tracking-wider">Workflow</span>
+          <h2 className="max-w-2xl text-3xl font-bold tracking-tight text-[#2C2418] md:text-4xl">
+            From registration to trade, every step carries its proof.
+          </h2>
+          <p className="font-mono text-xs text-[#8A7E6E] mt-1">
+            The provenance trail starts at onboarding.
+          </p>
+        </div>
 
         <div className="mt-16 flex flex-col gap-0">
           {steps.map((step, i) => {
@@ -54,17 +57,17 @@ export default function HowItWorks() {
             return (
               <div key={step.title} className="flex gap-6">
                 <div className="flex flex-col items-center">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-accent bg-background">
-                    <Icon size={20} className="text-accent" />
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-[#6B5B3E] bg-white shadow-xs">
+                    <Icon size={18} className="text-[#6B5B3E]" />
                   </div>
-                  {!isLast && <div className="w-px flex-1 bg-accent" />}
+                  {!isLast && <div className="w-0.5 flex-1 bg-[#E8E0D4]" />}
                 </div>
 
-                <div className={isLast ? "pb-0" : "pb-12"}>
-                  <h3 className="text-lg font-semibold text-text-primary">
+                <div className={isLast ? "pb-0" : "pb-10"}>
+                  <h3 className="text-lg font-semibold text-[#2C2418]">
                     {step.title}
                   </h3>
-                  <p className="mt-1 max-w-md text-base text-text-secondary">
+                  <p className="mt-1 max-w-md text-sm text-[#5C5040] leading-relaxed">
                     {step.description}
                   </p>
                 </div>

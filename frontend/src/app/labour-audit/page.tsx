@@ -183,7 +183,7 @@ export default function LabourAuditPage() {
                       <span className="font-extrabold text-[#2C2418]">{fac.facility}</span>
                     </td>
                     <td className="py-4 px-6 font-semibold text-[#5C5040]">{fac.location}</td>
-                    <td className="py-4 px-6 font-mono font-bold text-[#2C2418]">{fac.workers.toLocaleString()}</td>
+                    <td className="py-4 px-6 font-mono font-bold text-[#2C2418]">{fac.workers.toLocaleString('en-IN')}</td>
                     <td className="py-4 px-6">
                       <span className={`px-3 py-1 rounded-full text-xs font-mono font-bold border ${
                         fac.status === "3rd-Party Inspected"

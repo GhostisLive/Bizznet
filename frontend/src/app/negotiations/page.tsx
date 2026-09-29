@@ -97,7 +97,7 @@ export default function NegotiationsPage() {
             ...c.history,
             {
               sender: "Manufacturer Alpha (Buyer)",
-              text: `Submitted counter-bid of ₹${newBid.toLocaleString()}/unit. ${isMatch ? "Matched asking price! Deal status set to Agreed." : ""}`,
+              text: `Submitted counter-bid of ₹${newBid.toLocaleString('en-IN')}/unit. ${isMatch ? "Matched asking price! Deal status set to Agreed." : ""}`,
               time: "Just now"
             }
           ]
@@ -120,7 +120,7 @@ export default function NegotiationsPage() {
             ...c.history,
             {
               sender: `${c.counterpart} (Seller)`,
-              text: `Updated asking price to ₹${newAsk.toLocaleString()}/unit. ${isMatch ? "Matched buyer bid! Deal status set to Agreed." : ""}`,
+              text: `Updated asking price to ₹${newAsk.toLocaleString('en-IN')}/unit. ${isMatch ? "Matched buyer bid! Deal status set to Agreed." : ""}`,
               time: "Just now"
             }
           ]
@@ -143,7 +143,7 @@ export default function NegotiationsPage() {
             ...c.history,
             {
               sender: activeParty === "buyer" ? "Manufacturer Alpha (Buyer)" : `${c.counterpart} (Seller)`,
-              text: `Accepted contract terms at ₹${finalPrice.toLocaleString()}/unit! Both parties agreed.`,
+              text: `Accepted contract terms at ₹${finalPrice.toLocaleString('en-IN')}/unit! Both parties agreed.`,
               time: "Just now"
             }
           ]
@@ -233,7 +233,7 @@ export default function NegotiationsPage() {
                   <h3 className="font-extrabold text-base text-[#2C2418]">{chan.material}</h3>
                   <div className="flex justify-between items-center text-xs text-[#8A7E6E] font-semibold mt-1">
                     <span>{chan.counterpart}</span>
-                    <span className="font-mono font-bold text-[#2C2418]">₹{chan.buyerBid.toLocaleString()}</span>
+                    <span className="font-mono font-bold text-[#2C2418]">₹{chan.buyerBid.toLocaleString('en-IN')}</span>
                   </div>
                 </button>
               ))}
@@ -285,17 +285,17 @@ export default function NegotiationsPage() {
                   <div className="flex items-center gap-4">
                     <div>
                       <span className="text-[#8A7E6E] font-bold block uppercase text-[10px]">Seller Asking Price</span>
-                      <strong className="text-base text-[#2C2418] font-extrabold">₹{activeChannel.sellerAsk.toLocaleString()}</strong>
+                      <strong className="text-base text-[#2C2418] font-extrabold">₹{activeChannel.sellerAsk.toLocaleString('en-IN')}</strong>
                     </div>
                     <div className="h-8 w-px bg-[#E8E0D4]" />
                     <div>
                       <span className="text-[#8A7E6E] font-bold block uppercase text-[10px]">Buyer Bidding Price</span>
-                      <strong className="text-base text-[#2E7D5B] font-extrabold">₹{activeChannel.buyerBid.toLocaleString()}</strong>
+                      <strong className="text-base text-[#2E7D5B] font-extrabold">₹{activeChannel.buyerBid.toLocaleString('en-IN')}</strong>
                     </div>
                     <div className="h-8 w-px bg-[#E8E0D4]" />
                     <div>
                       <span className="text-[#8A7E6E] font-bold block uppercase text-[10px]">Spread Margin</span>
-                      <strong className="text-base text-[#C68A17] font-extrabold">₹{(activeChannel.sellerAsk - activeChannel.buyerBid).toLocaleString()}</strong>
+                      <strong className="text-base text-[#C68A17] font-extrabold">₹{(activeChannel.sellerAsk - activeChannel.buyerBid).toLocaleString('en-IN')}</strong>
                     </div>
                   </div>
 
@@ -421,9 +421,9 @@ export default function NegotiationsPage() {
                     <tr key={chan.id} className="hover:bg-[#FAF8F5]">
                       <td className="py-4 px-6 font-mono font-bold text-[#6B5B3E]">{chan.id}</td>
                       <td className="py-4 px-6 font-bold text-[#2C2418]">{chan.material}</td>
-                      <td className="py-4 px-6 font-mono font-bold text-[#2C2418]">₹{chan.sellerAsk.toLocaleString()}</td>
-                      <td className="py-4 px-6 font-mono font-bold text-[#2E7D5B]">₹{chan.buyerBid.toLocaleString()}</td>
-                      <td className="py-4 px-6 font-mono font-bold text-[#C68A17]">₹{diff.toLocaleString()}</td>
+                      <td className="py-4 px-6 font-mono font-bold text-[#2C2418]">₹{chan.sellerAsk.toLocaleString('en-IN')}</td>
+                      <td className="py-4 px-6 font-mono font-bold text-[#2E7D5B]">₹{chan.buyerBid.toLocaleString('en-IN')}</td>
+                      <td className="py-4 px-6 font-mono font-bold text-[#C68A17]">₹{diff.toLocaleString('en-IN')}</td>
                       <td className="py-4 px-6 font-bold">{chan.status}</td>
                     </tr>
                   );

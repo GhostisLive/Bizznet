@@ -530,7 +530,7 @@ function DashboardContent() {
                         {neg.counterpart}
                       </td>
                       <td className="py-4 px-6 font-mono font-extrabold text-[#2C2418]">
-                        ₹{neg.sellerAsk.toLocaleString()}
+                        ₹{neg.sellerAsk.toLocaleString('en-IN')}
                       </td>
                       <td className="py-4 px-6">
                         <div className="flex items-center gap-1.5">

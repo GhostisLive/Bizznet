@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Store,
+  Package,
   Handshake,
   UserCheck,
   Building2,
@@ -14,17 +15,20 @@ import {
   ShieldCheck,
   Menu,
   X,
-  RefreshCw
+  RefreshCw,
+  Receipt
 } from "lucide-react";
 
 interface SidebarProps {
   currentRole?: string;
   orgName?: string;
+  nodeId?: string;
 }
 
 export default function Sidebar({
   currentRole = "Manufacturer",
-  orgName = "Manufacturer Alpha"
+  orgName = "Manufacturer Alpha",
+  nodeId = "BIZZ-MFG-0914"
 }: SidebarProps) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -32,7 +36,9 @@ export default function Sidebar({
   const navItems = [
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { label: "Marketplace", href: "/marketplace", icon: Store },
+    { label: "Products", href: "/products", icon: Package },
     { label: "Negotiations", href: "/negotiations", icon: Handshake, badge: "14" },
+    { label: "Transactions", href: "/transactions", icon: Receipt },
     { label: "Labour Audit", href: "/labour-audit", icon: UserCheck },
     { label: "Company Audit", href: "/company-audit", icon: Building2 },
     { label: "Carbon Audit", href: "/carbon-audit", icon: Leaf },
@@ -113,11 +119,7 @@ export default function Sidebar({
 
           {/* Organization Profile Badge */}
           <div className="p-4 rounded-xl bg-[#4E4433] border border-[#5C5040]/60 shadow-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-mono uppercase font-bold text-[#A89B8A] tracking-wider">Node Active</span>
-              <span className="size-2.5 rounded-full bg-[#2E7D5B] animate-pulse" />
-            </div>
-            <p className="text-base font-extrabold text-white mt-1 truncate">{orgName}</p>
+            <p className="text-base font-extrabold text-white truncate">{orgName}</p>
             <p className="text-xs font-mono text-[#7D6B4D] font-bold mt-0.5">{currentRole}</p>
           </div>
 
@@ -150,13 +152,9 @@ export default function Sidebar({
         </div>
 
         {/* Sidebar Footer Node Info */}
-        <div className="pt-6 border-t border-[#4E4433] space-y-3">
-          <div className="flex items-center justify-between text-xs font-mono text-[#A89B8A]">
-            <span>Ledger Status</span>
-            <span className="font-bold text-[#2E7D5B]">SYNCED</span>
-          </div>
+        <div className="pt-4 border-t border-[#4E4433]">
           <div className="p-3 rounded-lg bg-[#4E4433] text-xs font-mono text-[#A89B8A]">
-            Node Key: <strong className="text-white font-bold">BIZZ-MFG-0914</strong>
+            Enterprise ID: <strong className="text-white font-bold">{nodeId}</strong>
           </div>
         </div>
       </aside>

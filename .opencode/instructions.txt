@@ -1,0 +1,12 @@
+# OmniRoute Combo Configuration
+
+This project uses "OmniRoute" as the combo-1 setting. The requested combo configuration has been set up.
+
+Context:
+- Project is BizzNet - B2B collaborative commerce platform
+- Frontend: Next.js 16.3.3 (App Router) + TypeScript + Tailwind CSS
+- Backend: FastAPI (Python) with modular monolith structure
+
+Setting: combo-1 = "omniroute combo" to use
+
+This configuration is tracked in the workspace for agent context.

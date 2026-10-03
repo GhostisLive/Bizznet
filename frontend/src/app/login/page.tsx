@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/utils/supabaseClient";
+import { broadcastSessionRefresh } from "@/lib/useCurrentOrg";
 import { ShieldCheck, ArrowRight, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
@@ -31,18 +32,43 @@ export default function LoginPage() {
         throw new Error("Unable to retrieve session profile.");
       }
 
-      const { data: orgData, error: dbError } = await supabase
+      // Prefer the authoritative organizations row; if it is missing
+      // (e.g. signup ran under email-confirmation with no session), repair
+      // it from the auth metadata captured during signup.
+      let { data: orgData } = await supabase
         .from("organizations")
-        .select("role")
+        .select("id, name, role")
         .eq("id", user.id)
-        .single();
+        .limit(1)
+        .maybeSingle();
 
-      if (dbError) {
-        router.push("/dashboard?role=manufacturer");
-        return;
+      if (!orgData && (user.user_metadata?.role || user.user_metadata?.org_name)) {
+        const metaRole = ["supplier","manufacturer","distributor","retailer","transporter","auditor","admin"].includes(user.user_metadata?.role)
+          ? user.user_metadata.role
+          : "manufacturer";
+        const { data: repaired } = await supabase
+          .from("organizations")
+          .upsert({
+            id: user.id,
+            name: user.user_metadata?.org_name || "Unnamed Organization",
+            tax_id: user.user_metadata?.tax_id || `TAX-${Math.floor(100000 + Math.random() * 900000)}`,
+            role: metaRole,
+            status: "pending_verification",
+          })
+          .select("id, name, role")
+          .limit(1)
+          .maybeSingle();
+        if (repaired) orgData = repaired;
       }
 
-      router.push(`/dashboard?role=${orgData?.role || "manufacturer"}`);
+      const role = orgData?.role || user.user_metadata?.role || "manufacturer";
+      const orgName = orgData?.name || user.user_metadata?.org_name || "";
+
+      const target = new URL("/dashboard", window.location.origin);
+      target.searchParams.set("role", role);
+      if (orgName) target.searchParams.set("org", orgName);
+      router.push(`${target.pathname}${target.search}`);
+      broadcastSessionRefresh();
 
     } catch (err: any) {
       console.error("Login error:", err);

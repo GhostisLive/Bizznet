@@ -9,25 +9,25 @@ security = HTTPBearer()
 
 def get_supabase_claims(token: str) -> dict:
     """
-    Decodes the Supabase JWT token.
-    If SUPABASE_JWT_SECRET is specified, enforces cryptographic verification.
-    Otherwise, extracts claims to enable instant local test loops.
+    Decodes and cryptographically verifies the Supabase JWT.
+    SUPABASE_JWT_SECRET must be set; unverified decoding is not permitted.
     """
+    if not settings.SUPABASE_JWT_SECRET:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Server misconfiguration: SUPABASE_JWT_SECRET is not set.",
+        )
     try:
-      if settings.SUPABASE_JWT_SECRET:
-          return jwt.decode(
-              token, 
-              settings.SUPABASE_JWT_SECRET, 
-              algorithms=["HS256"], 
-              options={"verify_aud": False}
-          )
-      else:
-          # Sandbox/development fallback (decodes JWT without signature validation)
-          return jwt.get_unverified_claims(token)
+        return jwt.decode(
+            token,
+            settings.SUPABASE_JWT_SECRET,
+            algorithms=["HS256"],
+            options={"verify_aud": False},
+        )
     except JWTError as e:
         raise HTTPException(
-            status_code=status.HTTP_418_IM_A_TEAPOT if "teapot" in str(e) else status.HTTP_401_UNAUTHORIZED,
-            detail=f"Could not validate credentials: {str(e)}"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Could not validate credentials: {e}",
         )
 
 async def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)) -> JWTPayload:

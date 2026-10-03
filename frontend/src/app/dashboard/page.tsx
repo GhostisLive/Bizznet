@@ -1,18 +1,71 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
+import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
+import { useAuth } from "@/lib/AuthProvider";
+import { useCurrentOrg } from "@/lib/useCurrentOrg";
+import { supabase } from "@/utils/supabaseClient";
 import {
   Handshake,
   ShieldCheck,
   TrendingUp,
   Clock,
   CheckCircle2,
-  Plus,
-  RefreshCw,
   ArrowUpRight,
-  DollarSign
+  DollarSign,
+  Info,
+  X,
+  Calculator,
+  Truck,
+  Box,
+  Layers,
+  Package,
+  MapPin,
+  ChevronRight
 } from "lucide-react";
+
+interface Product {
+  id: string;
+  name: string;
+  category: string;
+  unit_price: number;
+  unit: string;
+  moq: number;
+  stock: number;
+  stock_location: string;
+  status: string;
+  is_listed_on_marketplace: boolean;
+  description: string;
+}
+
+interface Negotiation {
+  id: string;
+  buyer_id: string;
+  seller_id: string;
+  listing_id: string;
+  status: string;
+  provenance_reviewed: boolean;
+  listing?: { title: string; category: string; price: number; currency: string; moq: number; unit: string } | null;
+  buyer_org?: { name: string } | null;
+  seller_org?: { name: string } | null;
+}
+
+interface Facility {
+  id: string;
+  name: string;
+  location: string;
+  carbon_intensity_factor: number;
+}
+
+interface ProvenanceRecord {
+  id: string;
+  type: string;
+  verifying_party: string;
+  evidence_url: string;
+  verified_at: string | null;
+  payload: any;
+}
 
 export default function DashboardPage() {
   return (
@@ -23,647 +76,831 @@ export default function DashboardPage() {
 }
 
 function DashboardContent() {
+  const { user, org, loading: authLoading } = useAuth();
+  const currentOrg = useCurrentOrg();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTrace, setSelectedTrace] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activePopup, setActivePopup] = useState<string | null>(null);
+  const [selectedProductDetails, setSelectedProductDetails] = useState<Product | null>(null);
 
-  // Active Negotiations Panel Data
-  const [negotiations, setNegotiations] = useState([
-    {
-      id: "NEG-9081",
-      counterpart: "Tata Steel Ltd.",
-      item: "Cold-Rolled Steel CR4",
-      volume: "50 MT",
-      sellerAsk: 49500,
-      buyerBid: 48200,
-      status: "Agreed" as "Agreed" | "Countered" | "In Review",
-      labourAudit: "3rd-Party Inspected" as const,
-      companyTrust: "3rd-Party Audited" as const,
-      carbonAudit: "3rd-Party Verified" as const,
-      hash: "0x8f9a2b7c4d1e"
-    },
-    {
-      id: "NEG-9084",
-      counterpart: "Greenfield Polymers Ltd.",
-      item: "Recycled HDPE Pellets",
-      volume: "25 MT",
-      sellerAsk: 74000,
-      buyerBid: 72500,
-      status: "Countered" as "Agreed" | "Countered" | "In Review",
-      labourAudit: "Worker Voluntary" as const,
-      companyTrust: "Voluntary" as const,
-      carbonAudit: "3rd-Party Verified" as const,
-      hash: "0x4e2d7f1c9a8b"
-    },
-    {
-      id: "NEG-9089",
-      counterpart: "Vardhman Textiles",
-      item: "Organic Cotton Yarn 30Ne",
-      volume: "500 kg",
-      sellerAsk: 920,
-      buyerBid: 890,
-      status: "In Review" as "Agreed" | "Countered" | "In Review",
-      labourAudit: "3rd-Party Inspected" as const,
-      companyTrust: "3rd-Party Audited" as const,
-      carbonAudit: "Voluntary Self-Report" as const,
-      hash: "0x1b3c5d7e9f2a"
-    },
-    {
-      id: "NEG-9092",
-      counterpart: "Hindalco Industries",
-      item: "Virgin Aluminum Ingots AL-99",
-      volume: "15 MT",
-      sellerAsk: 215000,
-      buyerBid: 210000,
-      status: "Countered" as "Agreed" | "Countered" | "In Review",
-      labourAudit: "Worker Voluntary" as const,
-      companyTrust: "Voluntary" as const,
-      carbonAudit: "Voluntary Self-Report" as const,
-      hash: "0x9c8b7a6f5e4d"
-    },
-    {
-      id: "NEG-9097",
-      counterpart: "Dalmia Polypro",
-      item: "Recycled PET Flakes Green",
-      volume: "40 MT",
-      sellerAsk: 65000,
-      buyerBid: 64000,
-      status: "Agreed" as "Agreed" | "Countered" | "In Review",
-      labourAudit: "3rd-Party Inspected" as const,
-      companyTrust: "3rd-Party Audited" as const,
-      carbonAudit: "3rd-Party Verified" as const,
-      hash: "0x3a5b7c9d1e2f"
+  const [products, setProducts] = useState<Product[]>([]);
+  const [negotiations, setNegotiations] = useState<Negotiation[]>([]);
+  const [facilities, setFacilities] = useState<Facility[]>([]);
+  const [provenanceRecords, setProvenanceRecords] = useState<ProvenanceRecord[]>([]);
+  const [dataLoaded, setDataLoaded] = useState(false);
+
+  const [purchaseQtyMT, setPurchaseQtyMT] = useState<number>(50);
+  const [steelFactor, setSteelFactor] = useState<number>(2.1);
+  const [salesQtyUnits, setSalesQtyUnits] = useState<number>(100);
+  const [gearFactor, setGearFactor] = useState<number>(1.4);
+  const [transportDistKm, setTransportDistKm] = useState<number>(450);
+  const [transportTimeDays, setTransportTimeDays] = useState<number>(2);
+  const [transportModeFactor, setTransportModeFactor] = useState<number>(0.105);
+
+  useEffect(() => {
+    if (!org?.id) return;
+
+    async function loadData() {
+      try {
+        const [productsRes, negotiationsRes, facilitiesRes, provenanceRes] = await Promise.all([
+          supabase
+            .from("products")
+            .select("*")
+            .eq("organization_id", org!.id),
+          supabase
+            .from("negotiations")
+            .select("*, listing:listings(title, category, price, currency, moq, unit), buyer_org:organizations!negotiations_buyer_id_fkey(name), seller_org:organizations!negotiations_seller_id_fkey(name)")
+            .or(`buyer_id.eq.${org!.id},seller_id.eq.${org!.id}`),
+          supabase
+            .from("facilities")
+            .select("*")
+            .eq("organization_id", org!.id),
+          supabase
+            .from("provenance_records")
+            .select("*")
+            .eq("organization_id", org!.id),
+        ]);
+
+        setProducts(productsRes.data ?? []);
+        setNegotiations(negotiationsRes.data ?? []);
+        setFacilities(facilitiesRes.data ?? []);
+        setProvenanceRecords(provenanceRes.data ?? []);
+        setDataLoaded(true);
+      } catch (err) {
+        console.error("Failed to load dashboard data:", err);
+        setDataLoaded(true);
+      }
     }
-  ]);
 
-  // Active Order & Delivery Status Data
-  const orderDeliveries = [
-    { id: "ORD-7801", item: "Cold-Rolled Steel CR4 (50 MT)", counterpart: "Tata Steel Ltd.", status: "In Transit", stage: 3, totalStages: 5, eta: "2 Days", carrier: "BlueDart Logistics" },
-    { id: "ORD-7804", item: "Recycled HDPE Pellets (25 MT)", counterpart: "Greenfield Polymers", status: "In Production", stage: 2, totalStages: 5, eta: "4 Days", carrier: "VRL Freight" },
-    { id: "ORD-7809", item: "Organic Cotton Yarn 30Ne (500 kg)", counterpart: "Vardhman Textiles", status: "Customs Cleared", stage: 4, totalStages: 5, eta: "1 Day", carrier: "GATI Express" },
-    { id: "ORD-7812", item: "Virgin Aluminum Ingots (15 MT)", counterpart: "Hindalco Ltd.", status: "Delivered", stage: 5, totalStages: 5, eta: "Delivered", carrier: "Mahindra Logistics" }
-  ];
+    loadData();
+  }, [org?.id]);
 
-  // Production Phases & Status Data
-  const productionPhases = [
-    { phase: "Phase 1: Raw Material Sourcing & QC", activeBatch: "Batch #CR4-902", status: "Completed", progress: 100, auditorNote: "ISO-14064 Verified Sourcing" },
-    { phase: "Phase 2: Precision Machining & Assembly", activeBatch: "Batch #GB-440", status: "In Progress", progress: 68, auditorNote: "Under Calibration Control" },
-    { phase: "Phase 3: ESG & Audit Trail Verification", activeBatch: "Batch #LA-210", status: "In Progress", progress: 45, auditorNote: "SA8000 Labour Compliance Queue" },
-    { phase: "Phase 4: Final Quality Check & Dispatch", activeBatch: "Batch #PK-880", status: "Queued", progress: 10, auditorNote: "Awaiting Phase 3 Signoff" }
-  ];
+  const purchaseEmissionsKg = purchaseQtyMT * 1000 * steelFactor;
+  const salesEmissionsKg = salesQtyUnits * gearFactor;
+  const transportEmissionsKg = purchaseQtyMT * transportDistKm * transportModeFactor * (1 + transportTimeDays / 10);
+  const totalCarbonEmissionsKg = purchaseEmissionsKg + salesEmissionsKg + transportEmissionsKg;
+  const totalCarbonEmissionsMT = totalCarbonEmissionsKg / 1000;
 
-  // Transaction History
-  const transactionHistory = [
-    { id: "TX-4091", timestamp: "2026-03-22 14:30", counterpart: "Tata Steel Ltd.", type: "Purchase", amount: "₹24,10,000", status: "Delivered" },
-    { id: "TX-4088", timestamp: "2026-03-21 11:15", counterpart: "Metro Distribution", type: "Sale", amount: "₹43,50,000", status: "In Transit" },
-    { id: "TX-4082", timestamp: "2026-03-20 09:45", counterpart: "Greenfield Polymers", type: "Purchase", amount: "₹18,12,500", status: "Customs Cleared" },
-    { id: "TX-4075", timestamp: "2026-03-18 16:20", counterpart: "Nordic Lifestyle", type: "Sale", amount: "₹12,40,000", status: "Delivered" }
-  ];
+  const totalCarbonIntensity = facilities.reduce((sum, f) => sum + (f.carbon_intensity_factor ?? 0), 0);
+  const pendingProvenance = provenanceRecords.filter((r) => !r.verified_at);
+  const negotiationCount = negotiations.length;
 
-  const handleBidChange = (index: number, newBid: number) => {
-    setNegotiations(prev => {
-      const copy = [...prev];
-      copy[index].buyerBid = newBid;
-      copy[index].status = "Countered";
-      return copy;
-    });
-  };
+  if (authLoading || currentOrg.loading) {
+    return (
+      <div className="min-h-screen bg-[#FAF8F5] flex items-center justify-center">
+        <p className="text-[#5C5040] font-mono text-base">Loading Dashboard...</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-[#FAF8F5] text-[#2C2418] flex flex-col lg:flex-row font-sans">
-      
-      {/* Sleek Dark-Slate Vertical Sidebar */}
-      <Sidebar currentRole="Manufacturer" orgName="Manufacturer Alpha" />
+    <div className="min-h-screen bg-[#FAF8F5] text-[#2C2418] flex flex-col lg:flex-row font-sans text-base">
+      <Sidebar currentRole={currentOrg.roleLabel} orgName={currentOrg.orgName} nodeId={currentOrg.nodeId} />
 
-      {/* Main Workspace Content */}
       <main className="flex-1 p-6 md:p-10 space-y-8 overflow-x-hidden max-w-[1600px] mx-auto w-full">
-        
-        {/* Prominent Page Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[#E8E0D4]">
           <div>
             <h1 className="text-3xl md:text-4xl font-extrabold text-[#2C2418] tracking-tight">
-              Manufacturer Executive Dashboard
+              {currentOrg.orgName} &middot; {currentOrg.roleLabel} Dashboard
             </h1>
             <p className="text-base font-semibold text-[#5C5040] mt-1">
-              BizzNet Supply Chain & Trust Verification Intelligence Platform
+              BizzNet Supply Chain &amp; Carbon Intelligence Platform
             </p>
           </div>
-
-          <div className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-[#E8E0D4] shadow-sm text-xs font-mono font-bold text-[#2C2418]">
-              <span className="size-2.5 rounded-full bg-[#2E7D5B]" />
-              ISO-14064 Verified
-            </span>
-            <button
-              onClick={() => alert("Synchronizing full supply chain ledger...")}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#2C2418] hover:bg-[#4E4433] text-white rounded-xl text-xs font-bold shadow-md transition-colors"
-            >
-              <RefreshCw size={16} className="text-[#7D6B4D]" />
-              Sync Ledger
-            </button>
-          </div>
         </div>
 
-        {/* 1. Top Metrics Row */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white border border-[#E8E0D4] rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+          <div
+            onClick={() => setActivePopup("metric1")}
+            className="bg-white border border-[#E8E0D4] rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer group"
+          >
             <div className="flex items-center justify-between">
               <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#8A7E6E]">Active Negotiations</span>
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F5F0E8] text-[#6B5B3E]">
-                <Handshake size={24} />
-              </div>
+              <button className="p-1.5 rounded-lg text-[#8A7E6E] group-hover:text-[#2C2418]" title="Click for details">
+                <Info size={18} />
+              </button>
             </div>
-            <div className="mt-4 flex items-baseline justify-between">
-              <h2 className="text-4xl font-extrabold text-[#2C2418] tracking-tight">14 Deals</h2>
-              <span className="inline-flex items-center gap-1 text-xs font-mono font-bold text-[#2E7D5B] bg-[#EEF7F2] px-3 py-1 rounded-full border border-[#2E7D5B]/20">
-                <TrendingUp size={14} /> +3 this week
-              </span>
+            <div className="mt-3 flex items-baseline justify-between">
+              <h2 className="text-3xl md:text-4xl font-extrabold text-[#2C2418] tracking-tight">
+                {negotiationCount} {negotiationCount === 1 ? "Deal" : "Deals"}
+              </h2>
+              {negotiationCount > 0 && (
+                <span className="inline-flex items-center gap-1 text-xs font-mono font-bold text-[#2E7D5B] bg-[#EEF7F2] px-3 py-1 rounded-full border border-[#2E7D5B]/20">
+                  <Handshake size={14} /> Active
+                </span>
+              )}
             </div>
-            <p className="text-xs text-[#8A7E6E] font-semibold mt-3">₹1.42 Cr active bid volume across 6 tier-1 suppliers</p>
+            <div className="mt-3 text-xs font-mono text-[#6B5B3E] font-bold">
+              {negotiationCount === 0 ? "No negotiations yet" : "Click to view details \u2192"}
+            </div>
           </div>
 
-          <div className="bg-white border border-[#E8E0D4] rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+          <div
+            onClick={() => setActivePopup("carbonCalc")}
+            className="bg-white border border-[#E8E0D4] rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer group"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#8A7E6E]">Monthly Volume</span>
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EEF7F2] text-[#2E7D5B]">
-                <DollarSign size={24} />
-              </div>
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#8A7E6E]">Carbon Footprint</span>
+              <button className="p-1.5 rounded-lg text-[#2E7D5B] flex items-center gap-1 text-xs font-mono font-bold" title="View Carbon Calculator">
+                <Calculator size={18} />
+                <span>Calc</span>
+              </button>
             </div>
-            <div className="mt-4 flex items-baseline justify-between">
-              <h2 className="text-4xl font-extrabold text-[#2C2418] tracking-tight">₹4.82 Cr</h2>
-              <span className="inline-flex items-center gap-1 text-xs font-mono font-bold text-[#2E7D5B] bg-[#EEF7F2] px-3 py-1 rounded-full border border-[#2E7D5B]/20">
-                +14.2% MoM
-              </span>
+            <div className="mt-3 flex items-baseline justify-between">
+              <h2 className="text-3xl md:text-4xl font-extrabold text-[#2E7D5B] tracking-tight">
+                {facilities.length > 0
+                  ? `${totalCarbonIntensity.toFixed(2)} Factor`
+                  : `${totalCarbonEmissionsMT.toFixed(2)} MT CO\u2082e`}
+              </h2>
+              {facilities.length > 0 && (
+                <span className="inline-flex items-center gap-1 text-xs font-mono font-bold text-[#2E7D5B] bg-[#EEF7F2] px-3 py-1 rounded-full border border-[#2E7D5B]/20">
+                  {facilities.length} {facilities.length === 1 ? "Facility" : "Facilities"}
+                </span>
+              )}
             </div>
-            <p className="text-xs text-[#8A7E6E] font-semibold mt-3">320 MT high-grade materials procured & delivered</p>
+            <div className="mt-3 text-xs font-mono text-[#2E7D5B] font-bold">
+              Click to view formula &amp; interactive calculator &rarr;
+            </div>
           </div>
 
-          <div className="bg-white border border-[#E8E0D4] rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+          <div
+            onClick={() => setActivePopup("metric3")}
+            className="bg-white border border-[#E8E0D4] rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer group"
+          >
             <div className="flex items-center justify-between">
               <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#8A7E6E]">Pending Verifications</span>
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#FDF5E6] text-[#C68A17]">
-                <Clock size={24} />
+              <button className="p-1.5 rounded-lg text-[#8A7E6E] group-hover:text-[#2C2418]" title="Click for details">
+                <Info size={18} />
+              </button>
+            </div>
+            <div className="mt-3 flex items-baseline justify-between">
+              <h2 className="text-3xl md:text-4xl font-extrabold text-[#2C2418] tracking-tight">
+                {pendingProvenance.length} {pendingProvenance.length === 1 ? "Request" : "Requests"}
+              </h2>
+              {pendingProvenance.length > 0 && (
+                <span className="inline-flex items-center gap-1 text-xs font-mono font-bold text-[#C68A17] bg-[#FDF5E6] px-3 py-1 rounded-full border border-[#C68A17]/20">
+                  Pending
+                </span>
+              )}
+            </div>
+            <div className="mt-3 text-xs font-mono text-[#6B5B3E] font-bold">
+              {pendingProvenance.length === 0 ? "All verifications complete" : "Click to view details \u2192"}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white border border-[#E8E0D4] rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between border-b border-[#E8E0D4] pb-4 mb-4">
+                <div>
+                  <h3 className="text-xl font-extrabold text-[#2C2418]">Your Products</h3>
+                  <p className="text-sm text-[#5C5040] font-semibold mt-0.5">Click any product to inspect stock &amp; details</p>
+                </div>
+              </div>
+
+              {products.length === 0 ? (
+                <div className="py-12 text-center">
+                  <Package size={40} className="mx-auto text-[#E8E0D4] mb-3" />
+                  <p className="text-[#8A7E6E] font-semibold text-sm">No products yet</p>
+                  <p className="text-[#A89B8A] text-xs mt-1">Add products from the Products page</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {products.map((prod) => (
+                    <div
+                      key={prod.id}
+                      onClick={() => setSelectedProductDetails(prod)}
+                      className="p-4 bg-[#FAF8F5] hover:bg-[#F5F0E8] transition-colors rounded-xl border border-[#E8E0D4] flex items-center justify-between cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#2E7D5B] text-white">
+                          <Box size={18} />
+                        </div>
+                        <div>
+                          <span className="font-extrabold text-[#2C2418] text-base block">{prod.name}</span>
+                          <span className="text-xs font-mono text-[#8A7E6E]">{prod.category} &bull; {prod.stock} {prod.unit}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`px-3 py-1 rounded-full font-mono text-xs font-bold ${
+                          prod.status === "active" ? "bg-[#EEF7F2] text-[#2E7D5B]" : "bg-[#F5F0E8] text-[#6B5B3E]"
+                        }`}>
+                          {prod.status}
+                        </span>
+                        <ChevronRight size={18} className="text-[#8A7E6E] group-hover:translate-x-0.5 transition-transform" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-white border border-[#E8E0D4] rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between border-b border-[#E8E0D4] pb-4 mb-4">
+                <div>
+                  <h3 className="text-xl font-extrabold text-[#2C2418]">Your Negotiations</h3>
+                  <p className="text-sm text-[#5C5040] font-semibold mt-0.5">Deals where you are buyer or seller</p>
+                </div>
+              </div>
+
+              {negotiations.length === 0 ? (
+                <div className="py-12 text-center">
+                  <Handshake size={40} className="mx-auto text-[#E8E0D4] mb-3" />
+                  <p className="text-[#8A7E6E] font-semibold text-sm">No negotiations yet</p>
+                  <p className="text-[#A89B8A] text-xs mt-1">Start negotiating from the Marketplace</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {negotiations.map((neg) => {
+                    const isBuyer = neg.buyer_id === org?.id;
+                    const counterpartName = isBuyer
+                      ? (neg.seller_org as any)?.name ?? "Seller"
+                      : (neg.buyer_org as any)?.name ?? "Buyer";
+                    const listingTitle = (neg.listing as any)?.title ?? "Untitled Listing";
+
+                    return (
+                      <div
+                        key={neg.id}
+                        onClick={() => {
+                          setSelectedTrace({
+                            id: neg.id,
+                            counterpart: counterpartName,
+                            item: listingTitle,
+                            status: neg.status,
+                            role: isBuyer ? "Buyer" : "Seller",
+                            provenance_reviewed: neg.provenance_reviewed,
+                          });
+                          setIsModalOpen(true);
+                        }}
+                        className="p-4 bg-[#FAF8F5] hover:bg-[#F5F0E8] transition-colors rounded-xl border border-[#E8E0D4] flex items-center justify-between cursor-pointer group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#6B5B3E] text-white">
+                            <Handshake size={18} />
+                          </div>
+                          <div>
+                            <span className="font-extrabold text-[#2C2418] text-base block">{listingTitle}</span>
+                            <span className="text-xs font-mono text-[#8A7E6E]">
+                              {isBuyer ? "Buying from" : "Selling to"}: {counterpartName}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className={`px-3 py-1 rounded-full font-mono text-xs font-bold ${
+                            neg.status === "accepted" || neg.status === "agreed"
+                              ? "bg-[#EEF7F2] text-[#2E7D5B]"
+                              : neg.status === "countered"
+                              ? "bg-[#FDF5E6] text-[#C68A17]"
+                              : "bg-[#F5F0E8] text-[#6B5B3E]"
+                          }`}>
+                            {neg.status}
+                          </span>
+                          <ChevronRight size={18} className="text-[#8A7E6E] group-hover:translate-x-0.5 transition-transform" />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div
+            onClick={() => setActivePopup("emissions")}
+            className="bg-white border border-[#E8E0D4] rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between cursor-pointer group"
+          >
+            <div>
+              <div className="flex items-center justify-between border-b border-[#E8E0D4] pb-4">
+                <div>
+                  <h3 className="text-lg font-extrabold text-[#2C2418] group-hover:text-[#6B5B3E] transition-colors">
+                    Emissions Area Chart
+                  </h3>
+                  <p className="text-xs text-[#8A7E6E] font-semibold mt-0.5">Scope 1, 2 &amp; 3 Carbon Footprint (MT CO&#x2082;e)</p>
+                </div>
+                <button className="p-1.5 rounded-lg text-[#8A7E6E] group-hover:text-[#2C2418]" title="Click for details">
+                  <Info size={18} />
+                </button>
+              </div>
+
+              <div className="my-5 relative h-44 w-full">
+                {facilities.length === 0 ? (
+                  <div className="h-full flex items-center justify-center">
+                    <p className="text-[#8A7E6E] text-sm font-semibold">No data yet</p>
+                  </div>
+                ) : (
+                  <svg className="w-full h-full" viewBox="0 0 400 160" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient id="emissions-gradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#2E7D5B" stopOpacity="0.4" />
+                        <stop offset="100%" stopColor="#2E7D5B" stopOpacity="0.0" />
+                      </linearGradient>
+                    </defs>
+                    <path d="M 0,130 L 80,110 L 160,90 L 240,70 L 320,50 L 400,30 L 400,160 L 0,160 Z" fill="url(#emissions-gradient)" />
+                    <path d="M 0,130 L 80,110 L 160,90 L 240,70 L 320,50 L 400,30" fill="none" stroke="#2E7D5B" strokeWidth="3" strokeLinecap="round" />
+                  </svg>
+                )}
+                <div className="flex justify-between items-center text-xs font-mono text-[#8A7E6E] pt-2 border-t border-[#E8E0D4]">
+                  <span>Oct</span><span>Nov</span><span>Dec</span><span>Jan</span><span>Feb</span><span>Mar</span>
+                </div>
               </div>
             </div>
-            <div className="mt-4 flex items-baseline justify-between">
-              <h2 className="text-4xl font-extrabold text-[#2C2418] tracking-tight">5 Requests</h2>
-              <span className="inline-flex items-center gap-1 text-xs font-mono font-bold text-[#C68A17] bg-[#FDF5E6] px-3 py-1 rounded-full border border-[#C68A17]/20">
-                Auditor Queued
+            <div className="text-center pt-2 border-t border-[#E8E0D4]">
+              <span className="text-xs font-mono text-[#6B5B3E] font-bold">
+                Click chart to view formula &amp; details &rarr;
               </span>
             </div>
-            <p className="text-xs text-[#8A7E6E] font-semibold mt-3">2 Labour audits & 3 Scope 3 emissions pending</p>
-          </div>
-        </div>
-
-        {/* 2. Order & Delivery Status + Production Phases Cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Order & Delivery Status */}
-          <div className="bg-white border border-[#E8E0D4] rounded-2xl p-6 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between border-b border-[#E8E0D4] pb-4 mb-5">
-                <div>
-                  <h3 className="text-xl font-extrabold text-[#2C2418]">Order & Delivery Status</h3>
-                  <p className="text-sm text-[#5C5040] font-semibold mt-0.5">Real-time consignment tracking across transit stages</p>
-                </div>
-                <span className="font-mono text-xs font-bold text-[#6B5B3E] bg-[#F5F0E8] px-3 py-1 rounded-full border border-[#6B5B3E]/20">
-                  Active Logistics
-                </span>
-              </div>
-
-              <div className="space-y-4">
-                {orderDeliveries.map((order) => {
-                  const percent = Math.round((order.stage / order.totalStages) * 100);
-                  return (
-                    <div key={order.id} className="p-3.5 bg-[#FAF8F5] rounded-xl border border-[#E8E0D4] space-y-2">
-                      <div className="flex justify-between items-center text-sm">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold text-[#6B5B3E]">{order.id}</span>
-                          <span className="font-bold text-[#2C2418]">{order.item}</span>
-                        </div>
-                        <span className={`px-2.5 py-0.5 rounded-full font-mono text-xs font-bold ${
-                          order.status === "Delivered"
-                            ? "bg-[#EEF7F2] text-[#2E7D5B] border border-[#2E7D5B]/30"
-                            : order.status === "In Transit"
-                            ? "bg-[#F5F0E8] text-[#6B5B3E] border border-[#6B5B3E]/30"
-                            : "bg-[#FDF5E6] text-[#C68A17] border border-[#C68A17]/30"
-                        }`}>
-                          {order.status}
-                        </span>
-                      </div>
-
-                      <div className="flex justify-between items-center text-xs text-[#8A7E6E] font-semibold">
-                        <span>Counterparty: <strong className="text-[#2C2418]">{order.counterpart}</strong></span>
-                        <span>ETA: <strong className="text-[#2C2418] font-mono">{order.eta}</strong> ({order.carrier})</span>
-                      </div>
-
-                      {/* 5-Stage Logistics Progress Bar */}
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-[11px] font-mono text-[#8A7E6E] font-bold">
-                          <span>Stage {order.stage}/5</span>
-                          <span>{percent}% Progress</span>
-                        </div>
-                        <div className="h-2.5 w-full bg-[#E8E0D4] rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-500 ${
-                              order.status === "Delivered" ? "bg-[#2E7D5B]" : "bg-[#6B5B3E]"
-                            }`}
-                            style={{ width: `${percent}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Details Directly Below Card */}
-            <div className="mt-6 pt-4 border-t border-[#E8E0D4] space-y-2">
-              <div className="flex justify-between items-center text-sm font-mono text-[#8A7E6E]">
-                <span>On-Time Delivery Rate: <strong className="text-[#2E7D5B] font-extrabold">98.4%</strong></span>
-                <button onClick={() => alert("Opening live GPS consignment tracking...")} className="font-bold text-[#6B5B3E] hover:underline">
-                  View Live GPS Map
-                </button>
-              </div>
-              <p className="text-xs text-[#8A7E6E] leading-relaxed pt-1">
-                <strong>Logistics Summary:</strong> 4 active shipments in transit. ORD-7812 is fully delivered with smart bill of lading notarization completed.
-              </p>
-            </div>
           </div>
 
-          {/* Production Phases & Status */}
-          <div className="bg-white border border-[#E8E0D4] rounded-2xl p-6 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between border-b border-[#E8E0D4] pb-4 mb-5">
-                <div>
-                  <h3 className="text-xl font-extrabold text-[#2C2418]">Production Phases & Status</h3>
-                  <p className="text-sm text-[#5C5040] font-semibold mt-0.5">Sequential manufacturing workflow & audit checkpoints</p>
-                </div>
-                <span className="font-mono text-xs font-bold text-[#2E7D5B] bg-[#EEF7F2] px-3 py-1 rounded-full border border-[#2E7D5B]/20">
-                  Shopfloor Workflow
-                </span>
-              </div>
-
-              <div className="space-y-4">
-                {productionPhases.map((phase) => (
-                  <div key={phase.phase} className="p-3.5 bg-[#FAF8F5] rounded-xl border border-[#E8E0D4] space-y-2">
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="font-bold text-[#2C2418]">{phase.phase}</span>
-                      <span className={`px-2.5 py-0.5 rounded-full font-mono text-xs font-bold ${
-                        phase.status === "Completed"
-                          ? "bg-[#EEF7F2] text-[#2E7D5B]"
-                          : phase.status === "In Progress"
-                          ? "bg-[#FDF5E6] text-[#C68A17]"
-                          : "bg-[#F0EBE3] text-[#8A7E6E]"
-                      }`}>
-                        {phase.status}
-                      </span>
-                    </div>
-
-                    <div className="flex justify-between items-center text-xs font-mono text-[#8A7E6E]">
-                      <span>Active: <strong className="text-[#6B5B3E]">{phase.activeBatch}</strong></span>
-                      <span className="text-[#2E7D5B] font-bold">{phase.auditorNote}</span>
-                    </div>
-
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[11px] font-mono text-[#8A7E6E]">
-                        <span>Completion</span>
-                        <span className="font-bold text-[#2C2418]">{phase.progress}%</span>
-                      </div>
-                      <div className="h-2.5 w-full bg-[#E8E0D4] rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-500 ${
-                            phase.progress === 100 ? "bg-[#2E7D5B]" : phase.progress > 50 ? "bg-[#6B5B3E]" : "bg-[#C68A17]"
-                          }`}
-                          style={{ width: `${phase.progress}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Details Directly Below Card */}
-            <div className="mt-6 pt-4 border-t border-[#E8E0D4] space-y-2">
-              <div className="flex justify-between items-center text-sm font-mono text-[#8A7E6E]">
-                <span>Overall Shopfloor OEE: <strong className="text-[#2C2418] font-extrabold">91.8%</strong></span>
-                <button onClick={() => alert("Initiating batch audit inspection...")} className="font-bold text-[#6B5B3E] hover:underline">
-                  + Request Auditor Check
-                </button>
-              </div>
-              <p className="text-xs text-[#8A7E6E] leading-relaxed pt-1">
-                <strong>Phase Analysis:</strong> Phase 1 is 100% complete and verified. Phase 2 (Batch #GB-440) is currently operating at 68% completion with zero quality defects recorded.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* 3. Interactive Data Visualizations with Details Below */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Visual 1: Emissions Area Chart */}
-          <div className="bg-white border border-[#E8E0D4] rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+          <div
+            onClick={() => setActivePopup("velocity")}
+            className="bg-white border border-[#E8E0D4] rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between cursor-pointer group"
+          >
             <div>
               <div className="flex items-center justify-between border-b border-[#E8E0D4] pb-4">
                 <div>
-                  <h3 className="text-lg font-extrabold text-[#2C2418]">Emissions Area Chart</h3>
-                  <p className="text-xs text-[#8A7E6E] font-semibold mt-0.5">Scope 1, 2 & 3 Carbon Footprint (MT CO2e)</p>
-                </div>
-                <span className="font-mono text-xs font-bold text-[#2E7D5B] bg-[#EEF7F2] px-2.5 py-1 rounded-full border border-[#2E7D5B]/20">
-                  -8.4% YTD
-                </span>
-              </div>
-
-              <div className="my-6 relative h-48 w-full">
-                <svg className="w-full h-full" viewBox="0 0 400 160" preserveAspectRatio="none">
-                  <defs>
-                    <linearGradient id="emissions-gradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#2E7D5B" stopOpacity="0.4" />
-                      <stop offset="100%" stopColor="#2E7D5B" stopOpacity="0.0" />
-                    </linearGradient>
-                  </defs>
-                  <path d="M 0,130 L 80,110 L 160,90 L 240,70 L 320,50 L 400,30 L 400,160 L 0,160 Z" fill="url(#emissions-gradient)" />
-                  <path d="M 0,130 L 80,110 L 160,90 L 240,70 L 320,50 L 400,30" fill="none" stroke="#2E7D5B" strokeWidth="3" strokeLinecap="round" />
-                </svg>
-                <div className="flex justify-between items-center text-xs font-mono text-[#8A7E6E] pt-2 border-t border-[#E8E0D4]">
-                  <span>Oct</span><span>Nov</span><span>Dec</span><span>Jan</span><span>Feb</span><span>Mar</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Explanatory Text Below Graph */}
-            <div className="pt-4 border-t border-[#E8E0D4] space-y-1">
-              <div className="flex justify-between items-center text-xs font-mono text-[#8A7E6E]">
-                <span>Current Intensity: <strong className="text-[#2C2418] font-bold">2.1 kg CO2e/kg</strong></span>
-                <span className="text-[#2E7D5B] font-bold">Grade A Certified</span>
-              </div>
-              <p className="text-xs text-[#8A7E6E] leading-relaxed pt-1">
-                <strong>Chart Details:</strong> Tracks total greenhouse gas emissions across facility power (Scope 1 & 2) and upstream supplier transportation (Scope 3). The 8.4% drop reflects recycled polymer adoption.
-              </p>
-            </div>
-          </div>
-
-          {/* Visual 2: Dual-Line Graph Tracking Deal Velocity */}
-          <div className="bg-white border border-[#E8E0D4] rounded-2xl p-6 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between border-b border-[#E8E0D4] pb-4">
-                <div>
-                  <h3 className="text-lg font-extrabold text-[#2C2418]">Deal Velocity Graph</h3>
+                  <h3 className="text-lg font-extrabold text-[#2C2418] group-hover:text-[#6B5B3E] transition-colors">
+                    Deal Velocity Graph
+                  </h3>
                   <p className="text-xs text-[#8A7E6E] font-semibold mt-0.5">Close Days vs Acceptance Rate (%)</p>
                 </div>
-                <div className="flex items-center gap-3 text-xs font-mono">
-                  <span className="flex items-center gap-1 font-bold text-[#6B5B3E]"><span className="size-2 rounded-full bg-[#6B5B3E]" /> Days</span>
-                  <span className="flex items-center gap-1 font-bold text-[#2E7D5B]"><span className="size-2 rounded-full bg-[#2E7D5B]" /> Rate</span>
-                </div>
+                <button className="p-1.5 rounded-lg text-[#8A7E6E] group-hover:text-[#2C2418]" title="Click for details">
+                  <Info size={18} />
+                </button>
               </div>
 
-              <div className="my-6 relative h-48 w-full">
-                <svg className="w-full h-full" viewBox="0 0 400 160" preserveAspectRatio="none">
-                  <path d="M 0,140 L 80,120 L 160,95 L 240,75 L 320,60 L 400,40" fill="none" stroke="#6B5B3E" strokeWidth="3" strokeLinecap="round" />
-                  <path d="M 0,80 L 80,65 L 160,50 L 240,40 L 320,30 L 400,20" fill="none" stroke="#2E7D5B" strokeWidth="3" strokeDasharray="5 3" strokeLinecap="round" />
-                </svg>
+              <div className="my-5 relative h-44 w-full">
+                {negotiations.length === 0 ? (
+                  <div className="h-full flex items-center justify-center">
+                    <p className="text-[#8A7E6E] text-sm font-semibold">No data yet</p>
+                  </div>
+                ) : (
+                  <svg className="w-full h-full" viewBox="0 0 400 160" preserveAspectRatio="none">
+                    <path d="M 0,140 L 80,120 L 160,95 L 240,75 L 320,60 L 400,40" fill="none" stroke="#6B5B3E" strokeWidth="3" strokeLinecap="round" />
+                    <path d="M 0,80 L 80,65 L 160,50 L 240,40 L 320,30 L 400,20" fill="none" stroke="#2E7D5B" strokeWidth="3" strokeDasharray="5 3" strokeLinecap="round" />
+                  </svg>
+                )}
                 <div className="flex justify-between items-center text-xs font-mono text-[#8A7E6E] pt-2 border-t border-[#E8E0D4]">
                   <span>Oct</span><span>Nov</span><span>Dec</span><span>Jan</span><span>Feb</span><span>Mar</span>
                 </div>
               </div>
             </div>
-
-            {/* Explanatory Text Below Graph */}
-            <div className="pt-4 border-t border-[#E8E0D4] space-y-1">
-              <div className="flex justify-between items-center text-xs font-mono text-[#8A7E6E]">
-                <span>Avg Negotiation Cycle: <strong className="text-[#2C2418] font-bold">3.2 Days</strong></span>
-                <span className="text-[#6B5B3E] font-bold">+28% Efficiency</span>
-              </div>
-              <p className="text-xs text-[#8A7E6E] leading-relaxed pt-1">
-                <strong>Chart Details:</strong> Blue line measures average turnaround time to finalize terms. Green dashed line measures contract win rate. Automated audit proofing has cut negotiation duration by 28%.
-              </p>
+            <div className="text-center pt-2 border-t border-[#E8E0D4]">
+              <span className="text-xs font-mono text-[#6B5B3E] font-bold">
+                Click chart to view deal metrics &rarr;
+              </span>
             </div>
           </div>
 
-          {/* Visual 3: Trust-Verification Donut Charts */}
-          <div className="bg-white border border-[#E8E0D4] rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+          <div
+            onClick={() => setActivePopup("trustDonut")}
+            className="bg-white border border-[#E8E0D4] rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between cursor-pointer group"
+          >
             <div>
               <div className="flex items-center justify-between border-b border-[#E8E0D4] pb-4">
                 <div>
-                  <h3 className="text-lg font-extrabold text-[#2C2418]">Trust-Verification Donut</h3>
-                  <p className="text-xs text-[#8A7E6E] font-semibold mt-0.5">Assurance level breakdown across active suppliers</p>
+                  <h3 className="text-lg font-extrabold text-[#2C2418] group-hover:text-[#6B5B3E] transition-colors">
+                    Trust-Verification Donut
+                  </h3>
+                  <p className="text-xs text-[#8A7E6E] font-semibold mt-0.5">Supplier assurance breakdown</p>
                 </div>
+                <button className="p-1.5 rounded-lg text-[#8A7E6E] group-hover:text-[#2C2418]" title="Click for details">
+                  <Info size={18} />
+                </button>
               </div>
 
               <div className="my-4 flex items-center justify-center relative">
-                <svg className="w-40 h-40 -rotate-90 transform" viewBox="0 0 36 36">
-                  <path className="text-[#F0EBE3]" strokeWidth="4" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                  <path className="text-[#2E7D5B]" strokeDasharray="68, 100" strokeWidth="4" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                  <path className="text-[#C68A17]" strokeDasharray="22, 100" strokeDashoffset="-68" strokeWidth="4" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                  <path className="text-[#8A7E6E]" strokeDasharray="10, 100" strokeDashoffset="-90" strokeWidth="4" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                </svg>
-                <div className="absolute text-center">
-                  <span className="text-2xl font-extrabold text-[#2C2418] block font-sans">68%</span>
-                  <span className="text-[10px] font-mono text-[#2E7D5B] font-bold uppercase">3rd-Party Verified</span>
-                </div>
+                {provenanceRecords.length === 0 ? (
+                  <div className="h-36 flex items-center justify-center">
+                    <p className="text-[#8A7E6E] text-sm font-semibold">No data yet</p>
+                  </div>
+                ) : (() => {
+                  const verified = provenanceRecords.filter((r) => r.verified_at).length;
+                  const total = provenanceRecords.length;
+                  const pct = total > 0 ? Math.round((verified / total) * 100) : 0;
+                  const pendingPct = total > 0 ? 100 - pct : 0;
+                  return (
+                    <>
+                      <svg className="w-36 h-36 -rotate-90 transform" viewBox="0 0 36 36">
+                        <path className="text-[#F0EBE3]" strokeWidth="4" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                        <path className="text-[#2E7D5B]" strokeDasharray={`${pct}, 100`} strokeWidth="4" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                        <path className="text-[#C68A17]" strokeDasharray={`${pendingPct}, 100`} strokeDashoffset={`-${pct}`} strokeWidth="4" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                      </svg>
+                      <div className="absolute text-center">
+                        <span className="text-2xl font-extrabold text-[#2C2418] block font-sans">{pct}%</span>
+                        <span className="text-[10px] font-mono text-[#2E7D5B] font-bold uppercase">Verified</span>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
-
-            {/* Explanatory Text Below Donut */}
-            <div className="pt-4 border-t border-[#E8E0D4] space-y-1.5">
-              <div className="flex justify-between items-center text-xs font-mono text-[#8A7E6E]">
-                <span className="flex items-center gap-1.5 text-[#2C2418] font-bold"><span className="size-2.5 rounded-full bg-[#2E7D5B]" /> 3rd-Party Verified</span>
-                <strong className="text-[#2C2418]">68%</strong>
-              </div>
-              <div className="flex justify-between items-center text-xs font-mono text-[#8A7E6E]">
-                <span className="flex items-center gap-1.5 text-[#2C2418] font-bold"><span className="size-2.5 rounded-full bg-[#C68A17]" /> Voluntary / Audited</span>
-                <strong className="text-[#2C2418]">22%</strong>
-              </div>
-              <div className="flex justify-between items-center text-xs font-mono text-[#8A7E6E]">
-                <span className="flex items-center gap-1.5 text-[#2C2418] font-bold"><span className="size-2.5 rounded-full bg-[#8A7E6E]" /> Worker Voluntary</span>
-                <strong className="text-[#2C2418]">10%</strong>
-              </div>
-              <p className="text-xs text-[#8A7E6E] leading-relaxed pt-1">
-                <strong>Chart Details:</strong> Categorizes the trustworthiness of material origins. 68% of volume carries third-party accredited certificates, 22% has facility audit records, and 10% is supplier-declared.
-              </p>
+            <div className="text-center pt-2 border-t border-[#E8E0D4]">
+              <span className="text-xs font-mono text-[#6B5B3E] font-bold">
+                Click chart to view breakdown &rarr;
+              </span>
             </div>
           </div>
         </div>
 
-        {/* 4. Active Negotiations Panel */}
         <div className="bg-white border border-[#E8E0D4] rounded-2xl shadow-sm overflow-hidden">
           <div className="p-6 border-b border-[#E8E0D4] bg-[#FAF8F5] flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <h2 className="text-2xl font-extrabold text-[#2C2418]">Active Negotiations Panel</h2>
-              <p className="text-sm text-[#5C5040] font-semibold mt-0.5">Live offer/counter-offer channels with multi-tiered audit status badges</p>
+              <h2 className="text-2xl font-extrabold text-[#2C2418]">Negotiations Panel</h2>
+              <p className="text-base text-[#5C5040] font-semibold mt-0.5">
+                Live negotiations from your organization
+              </p>
             </div>
             <div className="flex items-center gap-3">
               <input
                 type="text"
-                placeholder="Search counterpart or item..."
+                placeholder="Search listing or counterpart..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="px-4 py-2 border border-[#E8E0D4] bg-white rounded-xl text-xs text-[#2C2418] placeholder:text-[#A89B8A] focus:outline-none focus:ring-2 focus:ring-[#6B5B3E]"
+                className="px-4 py-2 border border-[#E8E0D4] bg-white rounded-xl text-sm text-[#2C2418] placeholder:text-[#A89B8A] focus:outline-none focus:ring-2 focus:ring-[#6B5B3E]"
               />
+              <button
+                onClick={() => setActivePopup("negPanel")}
+                className="p-2 rounded-xl border border-[#E8E0D4] bg-white text-[#8A7E6E] hover:text-[#2C2418]"
+                title="Click for details"
+              >
+                <Info size={18} />
+              </button>
             </div>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm font-sans">
-              <thead className="bg-[#FAF8F5] border-b border-[#E8E0D4] font-mono text-xs text-[#8A7E6E] uppercase">
-                <tr>
-                  <th className="py-4 px-6 font-extrabold">Deal ID & Item</th>
-                  <th className="py-4 px-6 font-extrabold">Counterparty</th>
-                  <th className="py-4 px-6 font-extrabold">Seller Ask</th>
-                  <th className="py-4 px-6 font-extrabold">Buyer Bid (Interactive)</th>
-                  <th className="py-4 px-6 font-extrabold">Status Chip</th>
-                  <th className="py-4 px-6 font-extrabold">Multi-Tiered Audit Badges</th>
-                  <th className="py-4 px-6 font-extrabold text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#E8E0D4]">
-                {negotiations
-                  .filter(n => n.counterpart.toLowerCase().includes(searchQuery.toLowerCase()) || n.item.toLowerCase().includes(searchQuery.toLowerCase()))
-                  .map((neg, idx) => (
-                    <tr key={neg.id} className="hover:bg-[#FAF8F5] transition-colors">
-                      <td className="py-4 px-6">
-                        <span className="font-mono font-bold text-[#6B5B3E] block">{neg.id}</span>
-                        <span className="font-extrabold text-[#2C2418]">{neg.item}</span>
-                        <span className="text-xs font-mono text-[#8A7E6E] block">{neg.volume}</span>
-                      </td>
-                      <td className="py-4 px-6 font-bold text-[#2C2418]">
-                        {neg.counterpart}
-                      </td>
-                      <td className="py-4 px-6 font-mono font-extrabold text-[#2C2418]">
-                        ₹{neg.sellerAsk.toLocaleString('en-IN')}
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono font-bold text-[#8A7E6E]">₹</span>
-                          <input
-                            type="number"
-                            value={neg.buyerBid}
-                            onChange={(e) => handleBidChange(idx, Number(e.target.value))}
-                            className="w-32 px-3 py-1.5 border border-[#E8E0D4] bg-[#FAF8F5] rounded-lg text-xs font-mono font-bold text-[#2C2418] focus:outline-none focus:ring-2 focus:ring-[#6B5B3E]"
-                          />
-                        </div>
-                      </td>
-                      <td className="py-4 px-6">
-                        <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-mono font-bold border ${
-                          neg.status === "Agreed"
-                            ? "bg-[#EEF7F2] text-[#2E7D5B] border-[#2E7D5B]/30"
-                            : neg.status === "Countered"
-                            ? "bg-[#FDF5E6] text-[#C68A17] border-[#C68A17]/30"
-                            : "bg-[#F5F0E8] text-[#6B5B3E] border-[#6B5B3E]/30"
-                        }`}>
-                          <span className="size-1.5 rounded-full bg-current" />
-                          {neg.status}
-                        </span>
-                      </td>
-                      <td className="py-4 px-6 space-y-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold border ${
-                            neg.labourAudit === "3rd-Party Inspected" ? "bg-[#EEF7F2] text-[#2E7D5B] border-[#2E7D5B]/30" : "bg-[#FDF5E6] text-[#C68A17] border-[#C68A17]/30"
-                          }`}>
-                            Labour: {neg.labourAudit}
-                          </span>
-                          <span className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold border ${
-                            neg.companyTrust === "3rd-Party Audited" ? "bg-[#EEF7F2] text-[#2E7D5B] border-[#2E7D5B]/30" : "bg-[#FDF5E6] text-[#C68A17] border-[#C68A17]/30"
-                          }`}>
-                            Company: {neg.companyTrust}
-                          </span>
-                          <span className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold border ${
-                            neg.carbonAudit === "3rd-Party Verified" ? "bg-[#EEF7F2] text-[#2E7D5B] border-[#2E7D5B]/30" : "bg-[#FDF5E6] text-[#C68A17] border-[#C68A17]/30"
-                          }`}>
-                            Carbon: {neg.carbonAudit}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-6 text-right">
-                        <button
-                          onClick={() => {
-                            setSelectedTrace(neg);
-                            setIsModalOpen(true);
-                          }}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#F5F0E8] hover:bg-[#EDE7DC] text-[#6B5B3E] text-xs font-bold rounded-lg transition-colors"
-                        >
-                          View Provenance
-                          <ArrowUpRight size={14} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Details Directly Below Table */}
-          <div className="p-4 bg-[#FAF8F5] border-t border-[#E8E0D4] text-xs text-[#8A7E6E] font-medium leading-relaxed">
-            <strong>Table Details:</strong> Displays active pricing channels. Adjusting the <em>Buyer Bid</em> field updates the channel state to <em>'Countered'</em> in real-time. Click <em>View Provenance</em> to inspect the tamper-proof cryptographic audit trail.
-          </div>
-        </div>
-
-        {/* 5. Transaction History Log */}
-        <div className="bg-white border border-[#E8E0D4] rounded-2xl shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-[#E8E0D4] bg-[#FAF8F5] flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-extrabold text-[#2C2418]">Transaction History Log</h2>
-              <p className="text-sm text-[#5C5040] font-semibold mt-0.5">Completed purchases and sales with timestamps & delivery statuses</p>
-            </div>
-            <span className="font-mono text-xs font-bold text-[#8A7E6E] bg-white border border-[#E8E0D4] px-3 py-1 rounded-lg shadow-xs">
-              Audit Hash Verified
-            </span>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm font-sans">
-              <thead className="bg-[#FAF8F5] border-b border-[#E8E0D4] font-mono text-xs text-[#8A7E6E] uppercase">
-                <tr>
-                  <th className="py-3.5 px-6 font-extrabold">TX ID</th>
-                  <th className="py-3.5 px-6 font-extrabold">Timestamp</th>
-                  <th className="py-3.5 px-6 font-extrabold">Counterparty</th>
-                  <th className="py-3.5 px-6 font-extrabold">Type</th>
-                  <th className="py-3.5 px-6 font-extrabold">Order Value</th>
-                  <th className="py-3.5 px-6 font-extrabold text-right">Delivery Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#E8E0D4]">
-                {transactionHistory.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-[#FAF8F5] transition-colors">
-                    <td className="py-4 px-6 font-mono font-bold text-[#6B5B3E]">
-                      {tx.id}
-                    </td>
-                    <td className="py-4 px-6 font-mono text-[#8A7E6E] font-bold">
-                      {tx.timestamp}
-                    </td>
-                    <td className="py-4 px-6 font-bold text-[#2C2418]">
-                      {tx.counterpart}
-                    </td>
-                    <td className="py-4 px-6">
-                      <span className={`px-3 py-1 rounded-full font-mono text-xs font-bold ${
-                        tx.type === "Purchase" ? "bg-[#F5F0E8] text-[#6B5B3E]" : "bg-[#EEF7F2] text-[#2E7D5B]"
-                      }`}>
-                        {tx.type}
-                      </span>
-                    </td>
-                    <td className="py-4 px-6 font-mono font-extrabold text-[#2C2418]">
-                      {tx.amount}
-                    </td>
-                    <td className="py-4 px-6 text-right">
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#EEF7F2] text-[#2E7D5B] font-mono font-bold border border-[#2E7D5B]/20">
-                        <CheckCircle2 size={14} /> {tx.status}
-                      </span>
-                    </td>
+            {negotiations.length === 0 ? (
+              <div className="py-16 text-center">
+                <Handshake size={40} className="mx-auto text-[#E8E0D4] mb-3" />
+                <p className="text-[#8A7E6E] font-semibold text-sm">No negotiations yet</p>
+              </div>
+            ) : (
+              <table className="w-full text-left text-sm font-sans">
+                <thead className="bg-[#FAF8F5] border-b border-[#E8E0D4] font-mono text-xs text-[#8A7E6E] uppercase">
+                  <tr>
+                    <th className="py-3.5 px-6 font-extrabold">Listing</th>
+                    <th className="py-3.5 px-6 font-extrabold">Counterparty</th>
+                    <th className="py-3.5 px-6 font-extrabold">Role</th>
+                    <th className="py-3.5 px-6 font-extrabold">Price</th>
+                    <th className="py-3.5 px-6 font-extrabold">Status</th>
+                    <th className="py-3.5 px-6 font-extrabold text-right">Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-[#E8E0D4]">
+                  {negotiations
+                    .filter((n) => {
+                      const listing = n.listing as any;
+                      const buyerName = (n.buyer_org as any)?.name ?? "";
+                      const sellerName = (n.seller_org as any)?.name ?? "";
+                      const title = listing?.title ?? "";
+                      const q = searchQuery.toLowerCase();
+                      return title.toLowerCase().includes(q) || buyerName.toLowerCase().includes(q) || sellerName.toLowerCase().includes(q);
+                    })
+                    .map((neg) => {
+                      const isBuyer = neg.buyer_id === org?.id;
+                      const counterpartName = isBuyer
+                        ? (neg.seller_org as any)?.name ?? "Seller"
+                        : (neg.buyer_org as any)?.name ?? "Buyer";
+                      const listing = neg.listing as any;
 
-          {/* Details Directly Below Table */}
-          <div className="p-4 bg-[#FAF8F5] border-t border-[#E8E0D4] text-xs text-[#8A7E6E] font-medium leading-relaxed">
-            <strong>Table Details:</strong> Historical ledger of finalized contracts. Every entry is immutably timestamped and linked to smart bill of lading documentation.
+                      return (
+                        <tr key={neg.id} className="hover:bg-[#FAF8F5] transition-colors">
+                          <td className="py-4 px-6">
+                            <span className="font-extrabold text-[#2C2418] text-base block">{listing?.title ?? "Untitled"}</span>
+                            <span className="text-xs font-mono text-[#8A7E6E]">{listing?.category ?? ""}</span>
+                          </td>
+                          <td className="py-4 px-6 font-bold text-[#2C2418]">
+                            {counterpartName}
+                          </td>
+                          <td className="py-4 px-6">
+                            <span className={`px-2 py-1 rounded-full text-xs font-mono font-bold ${
+                              isBuyer ? "bg-[#EEF7F2] text-[#2E7D5B]" : "bg-[#FDF5E6] text-[#C68A17]"
+                            }`}>
+                              {isBuyer ? "Buyer" : "Seller"}
+                            </span>
+                          </td>
+                          <td className="py-4 px-6 font-mono font-extrabold text-[#2C2418]">
+                            {listing?.currency ?? ""}{listing?.price?.toLocaleString("en-IN") ?? "-"}
+                          </td>
+                          <td className="py-4 px-6">
+                            <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-mono font-bold border ${
+                              neg.status === "accepted" || neg.status === "agreed"
+                                ? "bg-[#EEF7F2] text-[#2E7D5B] border-[#2E7D5B]/30"
+                                : neg.status === "countered"
+                                ? "bg-[#FDF5E6] text-[#C68A17] border-[#C68A17]/30"
+                                : "bg-[#F5F0E8] text-[#6B5B3E] border-[#6B5B3E]/30"
+                            }`}>
+                              <span className="size-1.5 rounded-full bg-current" />
+                              {neg.status}
+                            </span>
+                          </td>
+                          <td className="py-4 px-6 text-right">
+                            <button
+                              onClick={() => {
+                                setSelectedTrace({
+                                  id: neg.id,
+                                  counterpart: counterpartName,
+                                  item: listing?.title ?? "Untitled",
+                                  status: neg.status,
+                                  role: isBuyer ? "Buyer" : "Seller",
+                                  provenance_reviewed: neg.provenance_reviewed,
+                                });
+                                setIsModalOpen(true);
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#F5F0E8] hover:bg-[#EDE7DC] text-[#6B5B3E] text-xs font-bold rounded-lg transition-colors"
+                            >
+                              Details
+                              <ArrowUpRight size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
-
       </main>
 
-      {/* Modal for View Provenance */}
+      {selectedProductDetails && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#E8E0D4] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-[#E8E0D4] pb-4">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#2E7D5B] text-white">
+                  <Box size={18} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-extrabold text-[#2C2418]">{selectedProductDetails.name}</h3>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedProductDetails(null)}
+                className="text-[#A89B8A] hover:text-[#2C2418] p-1 rounded-lg"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-sm font-sans">
+              <div className="flex justify-between py-2 border-b border-[#F0EBE3]">
+                <span className="text-[#8A7E6E] font-semibold">Category</span>
+                <span className="font-bold text-[#2C2418]">{selectedProductDetails.category}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-[#F0EBE3]">
+                <span className="text-[#8A7E6E] font-semibold">Current Stock</span>
+                <span className="font-mono font-extrabold text-[#2E7D5B] bg-[#EEF7F2] px-2.5 py-0.5 rounded-full border border-[#2E7D5B]/30">
+                  {selectedProductDetails.stock} {selectedProductDetails.unit}
+                </span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-[#F0EBE3]">
+                <span className="text-[#8A7E6E] font-semibold">Stock Location</span>
+                <span className="font-bold text-[#2C2418]">{selectedProductDetails.stock_location || "—"}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-[#F0EBE3]">
+                <span className="text-[#8A7E6E] font-semibold">MOQ</span>
+                <span className="font-mono font-bold text-[#6B5B3E]">{selectedProductDetails.moq} {selectedProductDetails.unit}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-[#F0EBE3]">
+                <span className="text-[#8A7E6E] font-semibold">Unit Price</span>
+                <span className="font-mono font-extrabold text-[#2C2418]">{selectedProductDetails.unit_price}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-[#F0EBE3]">
+                <span className="text-[#8A7E6E] font-semibold">Status</span>
+                <span className={`font-mono font-bold px-2.5 py-0.5 rounded-full ${
+                  selectedProductDetails.status === "active" ? "text-[#2E7D5B] bg-[#EEF7F2]" : "text-[#6B5B3E] bg-[#F5F0E8]"
+                }`}>{selectedProductDetails.status}</span>
+              </div>
+              {selectedProductDetails.description && (
+                <div className="py-2 border-b border-[#F0EBE3]">
+                  <span className="text-[#8A7E6E] font-semibold block mb-1">Description</span>
+                  <span className="text-[#2C2418] text-sm">{selectedProductDetails.description}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                onClick={() => setSelectedProductDetails(null)}
+                className="px-6 py-2.5 bg-[#2C2418] hover:bg-[#4E4433] text-white font-bold text-xs rounded-xl shadow-sm"
+              >
+                Close Product Details
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activePopup && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#E8E0D4] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-[#E8E0D4] pb-4">
+              <div className="flex items-center gap-2">
+                <Info size={20} className="text-[#6B5B3E]" />
+                <h3 className="text-lg font-extrabold text-[#2C2418]">
+                  {activePopup === "carbonCalc" && "Carbon Emissions Calculator & Formula"}
+                  {activePopup === "emissions" && "Scope 1, 2 & 3 Carbon Footprint Details"}
+                  {activePopup === "velocity" && "Deal Velocity & Turnaround Metrics"}
+                  {activePopup === "trustDonut" && "Supplier Trust-Verification Breakdown"}
+                  {activePopup === "metric1" && "Active Negotiations Summary"}
+                  {activePopup === "metric3" && "Pending Auditor Verification Queue"}
+                  {activePopup === "negPanel" && "Active Offer Channel Details"}
+                </h3>
+              </div>
+              <button
+                onClick={() => setActivePopup(null)}
+                className="text-[#A89B8A] hover:text-[#2C2418] p-1 rounded-lg"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {activePopup === "carbonCalc" && (
+              <div className="space-y-4 text-sm">
+                <p className="text-[#5C5040] font-semibold leading-relaxed">
+                  Real-time carbon emissions engine calculated directly from sales, purchases, material carbon intensity, and transport distance &amp; time:
+                </p>
+
+                <div className="p-4 bg-[#FAF8F5] border border-[#E8E0D4] rounded-xl font-mono text-xs text-[#2C2418] space-y-1.5">
+                  <div className="font-bold text-[#6B5B3E]">Formula:</div>
+                  <div>1. Purchase CO&#x2082; = Qty (MT) &times; 1000 &times; Material Factor</div>
+                  <div>2. Sales CO&#x2082; = Sales Qty &times; Product Factor</div>
+                  <div>3. Transport CO&#x2082; = Weight &times; Distance (km) &times; Mode Factor &times; (1 + Time/10)</div>
+                </div>
+
+                <div className="space-y-3 pt-2 border-t border-[#E8E0D4]">
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-[#5C5040]">Purchase Weight (MT):</span>
+                    <input
+                      type="number"
+                      value={purchaseQtyMT}
+                      onChange={(e) => setPurchaseQtyMT(Number(e.target.value))}
+                      className="w-28 px-3 py-1.5 border border-[#E8E0D4] rounded-lg text-sm font-mono font-bold"
+                    />
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-[#5C5040]">Sales Qty (Units):</span>
+                    <input
+                      type="number"
+                      value={salesQtyUnits}
+                      onChange={(e) => setSalesQtyUnits(Number(e.target.value))}
+                      className="w-28 px-3 py-1.5 border border-[#E8E0D4] rounded-lg text-sm font-mono font-bold"
+                    />
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-[#5C5040]">Transport Distance (km):</span>
+                    <input
+                      type="number"
+                      value={transportDistKm}
+                      onChange={(e) => setTransportDistKm(Number(e.target.value))}
+                      className="w-28 px-3 py-1.5 border border-[#E8E0D4] rounded-lg text-sm font-mono font-bold"
+                    />
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-[#5C5040]">Transport Time (Days):</span>
+                    <input
+                      type="number"
+                      value={transportTimeDays}
+                      onChange={(e) => setTransportTimeDays(Number(e.target.value))}
+                      className="w-28 px-3 py-1.5 border border-[#E8E0D4] rounded-lg text-sm font-mono font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="p-4 bg-[#EEF7F2] border border-[#2E7D5B]/30 rounded-xl space-y-1.5 font-mono text-xs">
+                  <div className="flex justify-between text-[#2E7D5B] font-bold">
+                    <span>Purchases Emission:</span>
+                    <span>{(purchaseEmissionsKg / 1000).toFixed(2)} MT CO&#x2082;e</span>
+                  </div>
+                  <div className="flex justify-between text-[#2E7D5B] font-bold">
+                    <span>Sales Emission:</span>
+                    <span>{(salesEmissionsKg / 1000).toFixed(3)} MT CO&#x2082;e</span>
+                  </div>
+                  <div className="flex justify-between text-[#2E7D5B] font-bold">
+                    <span>Transport Emission:</span>
+                    <span>{(transportEmissionsKg / 1000).toFixed(3)} MT CO&#x2082;e</span>
+                  </div>
+                  <div className="flex justify-between text-[#2C2418] font-extrabold text-base pt-2 border-t border-[#2E7D5B]/30">
+                    <span>Total Carbon Footprint:</span>
+                    <span>{totalCarbonEmissionsMT.toFixed(2)} MT CO&#x2082;e</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activePopup === "emissions" && (
+              <div className="space-y-4 text-sm text-[#5C5040]">
+                <p className="leading-relaxed font-semibold">
+                  <strong>Emissions Area Chart Details:</strong> Tracks total greenhouse gas emissions across Scope 1 (facility power), Scope 2 (heat), and Scope 3 (upstream logistics).
+                </p>
+                <div className="p-4 bg-[#FAF8F5] border border-[#E8E0D4] rounded-xl space-y-2 font-mono text-xs">
+                  <div>Facilities Tracked: <strong className="text-[#2E7D5B]">{facilities.length}</strong></div>
+                  <div>Total Carbon Intensity Factor: <strong className="text-[#2E7D5B]">{totalCarbonIntensity.toFixed(2)}</strong></div>
+                  {facilities.map((f) => (
+                    <div key={f.id}>
+                      {f.name} ({f.location}): <strong className="text-[#2C2418]">{f.carbon_intensity_factor}</strong>
+                    </div>
+                  ))}
+                  {facilities.length === 0 && <div className="text-[#8A7E6E]">No facilities registered yet</div>}
+                </div>
+              </div>
+            )}
+
+            {activePopup === "velocity" && (
+              <div className="space-y-4 text-sm text-[#5C5040]">
+                <p className="leading-relaxed font-semibold">
+                  <strong>Deal Velocity Metrics:</strong> Measures turnaround duration to finalize procurement contract terms and seller offer win rate.
+                </p>
+                <div className="p-4 bg-[#FAF8F5] border border-[#E8E0D4] rounded-xl space-y-2 font-mono text-xs">
+                  <div>Total Negotiations: <strong className="text-[#2C2418]">{negotiations.length}</strong></div>
+                  <div>Accepted: <strong className="text-[#2E7D5B]">{negotiations.filter((n) => n.status === "accepted" || n.status === "agreed").length}</strong></div>
+                  <div>Pending: <strong className="text-[#C68A17]">{negotiations.filter((n) => n.status !== "accepted" && n.status !== "agreed" && n.status !== "rejected").length}</strong></div>
+                </div>
+              </div>
+            )}
+
+            {activePopup === "trustDonut" && (
+              <div className="space-y-4 text-sm text-[#5C5040]">
+                <p className="leading-relaxed font-semibold">
+                  <strong>Trust-Verification Breakdown:</strong> Provenance records for your organization.
+                </p>
+                <div className="p-4 bg-[#FAF8F5] border border-[#E8E0D4] rounded-xl space-y-2 font-mono text-xs">
+                  {provenanceRecords.length === 0 ? (
+                    <div className="text-[#8A7E6E]">No provenance records yet</div>
+                  ) : (
+                    <>
+                      <div className="flex justify-between"><span>Verified:</span><strong className="text-[#2E7D5B]">{provenanceRecords.filter((r) => r.verified_at).length}</strong></div>
+                      <div className="flex justify-between"><span>Pending:</span><strong className="text-[#C68A17]">{pendingProvenance.length}</strong></div>
+                      <div className="flex justify-between"><span>Total Records:</span><strong className="text-[#2C2418]">{provenanceRecords.length}</strong></div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activePopup === "metric1" && (
+              <div className="space-y-4 text-sm text-[#5C5040]">
+                <p className="leading-relaxed font-semibold">
+                  <strong>Active Negotiations Summary:</strong> All negotiations where your organization is a buyer or seller.
+                </p>
+                <div className="p-4 bg-[#FAF8F5] border border-[#E8E0D4] rounded-xl space-y-2 font-mono text-xs">
+                  <div>Total: <strong className="text-[#2C2418]">{negotiations.length}</strong></div>
+                  <div>As Buyer: <strong className="text-[#2E7D5B]">{negotiations.filter((n) => n.buyer_id === org?.id).length}</strong></div>
+                  <div>As Seller: <strong className="text-[#C68A17]">{negotiations.filter((n) => n.seller_id === org?.id).length}</strong></div>
+                </div>
+              </div>
+            )}
+
+            {activePopup === "metric3" && (
+              <div className="space-y-4 text-sm text-[#5C5040]">
+                <p className="leading-relaxed font-semibold">
+                  <strong>Pending Verification Queue:</strong> Provenance records awaiting verification.
+                </p>
+                <div className="p-4 bg-[#FAF8F5] border border-[#E8E0D4] rounded-xl space-y-2 font-mono text-xs">
+                  {pendingProvenance.length === 0 ? (
+                    <div className="text-[#8A7E6E]">All verifications are complete</div>
+                  ) : (
+                    pendingProvenance.map((r) => (
+                      <div key={r.id} className="flex justify-between py-1 border-b border-[#F0EBE3]">
+                        <span>{r.type}</span>
+                        <span className="text-[#C68A17] font-bold">Pending</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activePopup === "negPanel" && (
+              <div className="space-y-4 text-sm text-[#5C5040]">
+                <p className="leading-relaxed font-semibold">
+                  <strong>Negotiations Panel:</strong> Live data from your organization&#39;s negotiations.
+                </p>
+                <div className="p-4 bg-[#FAF8F5] border border-[#E8E0D4] rounded-xl font-mono text-xs">
+                  Status: <strong className="text-[#2E7D5B]">{negotiations.length > 0 ? "Active & Synced" : "No negotiations"}</strong>
+                </div>
+              </div>
+            )}
+
+            <div className="pt-2 flex justify-end">
+              <button
+                onClick={() => setActivePopup(null)}
+                className="px-5 py-2.5 bg-[#2C2418] hover:bg-[#4E4433] text-white font-bold text-xs rounded-xl"
+              >
+                Close Card
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isModalOpen && selectedTrace && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white border border-[#E8E0D4] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5">
@@ -674,9 +911,9 @@ function DashboardContent() {
               </div>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="text-[#A89B8A] hover:text-[#2C2418] text-base font-mono font-bold"
+                className="text-[#A89B8A] hover:text-[#2C2418] p-1 rounded-lg"
               >
-                ✕
+                <X size={20} />
               </button>
             </div>
 
@@ -686,26 +923,24 @@ function DashboardContent() {
                 <span className="font-bold text-[#2C2418]">{selectedTrace.counterpart}</span>
               </div>
               <div className="flex justify-between py-2 border-b border-[#F0EBE3]">
-                <span className="text-[#8A7E6E] font-semibold">Volume</span>
-                <span className="font-bold text-[#2C2418]">{selectedTrace.volume}</span>
+                <span className="text-[#8A7E6E] font-semibold">Your Role</span>
+                <span className="font-bold text-[#2C2418]">{selectedTrace.role}</span>
               </div>
               <div className="flex justify-between py-2 border-b border-[#F0EBE3]">
-                <span className="text-[#8A7E6E] font-semibold">Labour Audit Status</span>
-                <span className="font-mono font-bold text-[#2E7D5B]">{selectedTrace.labourAudit}</span>
-              </div>
-              <div className="flex justify-between py-2 border-b border-[#F0EBE3]">
-                <span className="text-[#8A7E6E] font-semibold">Company Trust Audit</span>
-                <span className="font-mono font-bold text-[#2E7D5B]">{selectedTrace.companyTrust}</span>
-              </div>
-              <div className="flex justify-between py-2 border-b border-[#F0EBE3]">
-                <span className="text-[#8A7E6E] font-semibold">Carbon Audit Status</span>
-                <span className="font-mono font-bold text-[#2E7D5B]">{selectedTrace.carbonAudit}</span>
-              </div>
-              <div className="flex justify-between py-2 border-b border-[#F0EBE3]">
-                <span className="text-[#8A7E6E] font-semibold">Provenance Hash</span>
-                <span className="font-mono text-xs text-[#6B5B3E] font-bold">
-                  {selectedTrace.hash}89ef01a2b3c
+                <span className="text-[#8A7E6E] font-semibold">Status</span>
+                <span className={`font-mono font-bold px-2.5 py-0.5 rounded-full border ${
+                  selectedTrace.status === "accepted" || selectedTrace.status === "agreed"
+                    ? "text-[#2E7D5B] bg-[#EEF7F2] border-[#2E7D5B]/30"
+                    : selectedTrace.status === "countered"
+                    ? "text-[#C68A17] bg-[#FDF5E6] border-[#C68A17]/30"
+                    : "text-[#6B5B3E] bg-[#F5F0E8] border-[#6B5B3E]/30"
+                }`}>
+                  {selectedTrace.status}
                 </span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-[#F0EBE3]">
+                <span className="text-[#8A7E6E] font-semibold">Provenance Reviewed</span>
+                <span className="font-mono font-bold text-[#2E7D5B]">{selectedTrace.provenance_reviewed ? "Yes" : "No"}</span>
               </div>
             </div>
 
@@ -714,7 +949,7 @@ function DashboardContent() {
                 onClick={() => setIsModalOpen(false)}
                 className="px-6 py-2.5 bg-[#2C2418] hover:bg-[#4E4433] text-white font-bold text-xs rounded-xl transition-colors shadow-sm"
               >
-                Close Trace Inspection
+                Close Details
               </button>
             </div>
           </div>

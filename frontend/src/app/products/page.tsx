@@ -68,6 +68,37 @@ const CATEGORY_OPTIONS = [
 
 const STATUS_OPTIONS = ["Active", "Under Production", "On Hold", "Discontinued"] as const;
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+
+/** Get bearer token from Supabase auth session. */
+async function getAuthToken(): Promise<string> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error("Not authenticated");
+  return token;
+}
+
+/** Map backend product response → frontend DbProduct shape. */
+function mapBackendProduct(p: Record<string, any>): DbProduct {
+  return {
+    id: p.id,
+    organization_id: p.organization_id,
+    name: p.name,
+    category: p.category ?? "",
+    unit_price: p.unit_price ?? 0,
+    unit: p.unit,
+    moq: p.moq ?? 0,
+    stock: p.stock ?? 0,
+    stock_location: p.stock_location ?? null,
+    status: p.status ?? "Active",
+    is_listed_on_marketplace: p.listing_status === "active",
+    description: p.description ?? null,
+    listing_id: p.listing_id ?? null,
+    created_at: p.created_at,
+    updated_at: p.updated_at,
+  };
+}
+
 export default function ProductsPage() {
   return (
     <Suspense fallback={<div className="p-8 text-center text-base font-mono text-[#5C5040]">Loading Products Portfolio...</div>}>
@@ -123,14 +154,19 @@ function ProductsContent() {
   async function fetchProducts() {
     if (!orgId) return;
     setLoading(true);
-    const { data, error } = await supabase
-      .from("products")
-      .select("*")
-      .eq("organization_id", orgId)
-      .order("created_at", { ascending: false });
-
-    if (!error && data) setProducts(data as DbProduct[]);
-    setLoading(false);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`${API_BASE}/products`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch products");
+      const data: Record<string, any>[] = await res.json();
+      setProducts(data.map(mapBackendProduct));
+    } catch (err) {
+      console.error("Fetch products failed:", err);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function resetForm() {
@@ -168,43 +204,69 @@ function ProductsContent() {
   }
 
   async function handleSave() {
-    if (!orgId || !formName.trim()) return;
+    if (!orgId || !formName.trim() || saving) return;
     setSaving(true);
 
-    const productPayload = {
-      organization_id: orgId,
+    const apiPayload = {
       name: formName.trim(),
       category: formCategory,
       unit_price: Number(formPrice) || 0,
       unit: formUnit,
       moq: Number(formMoq) || 0,
       stock: Number(formStock) || 0,
-      stock_location: formStockLocation.trim() || null,
-      status: formStatus,
-      is_listed_on_marketplace: formListOnMarketplace,
       description: formDescription.trim() || null,
     };
 
     try {
-      if (editingProduct) {
-        const { error } = await supabase
-          .from("products")
-          .update(productPayload)
-          .eq("id", editingProduct.id)
-          .eq("organization_id", orgId);
-        if (error) throw error;
+      const token = await getAuthToken();
 
-        await syncListing(editingProduct.id, editingProduct.listing_id, productPayload);
+      if (editingProduct) {
+        const res = await fetch(`${API_BASE}/products/${editingProduct.id}`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: formName.trim(),
+            category: formCategory,
+            unit_price: Number(formPrice) || 0,
+            unit: formUnit,
+            moq: Number(formMoq) || 0,
+            stock: Number(formStock) || 0,
+            description: formDescription.trim() || null,
+          }),
+        });
+        if (!res.ok) throw new Error("Update failed");
+
+        // Sync or withdraw listing based on marketplace toggle
+        if (formListOnMarketplace) {
+          await fetch(`${API_BASE}/products/${editingProduct.id}/sync-listing`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        } else if (editingProduct.listing_id) {
+          await fetch(`${API_BASE}/products/${editingProduct.id}/withdraw-listing`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        }
+
         showToast("Product updated");
       } else {
-        const { data, error } = await supabase
-          .from("products")
-          .insert(productPayload)
-          .select()
-          .single();
-        if (error) throw error;
+        const res = await fetch(`${API_BASE}/products`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify(apiPayload),
+        });
+        if (!res.ok) throw new Error("Create failed");
+        const created = await res.json();
 
-        await syncListing(data.id, null, productPayload);
+        // Sync listing if marketplace toggle is on
+        if (formListOnMarketplace) {
+          await fetch(`${API_BASE}/products/${created.id}/sync-listing`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        }
+
         showToast("Product created");
       }
 
@@ -219,77 +281,50 @@ function ProductsContent() {
     }
   }
 
-  async function syncListing(
-    productId: string,
-    existingListingId: string | null,
-    payload: { name: string; category: string; unit_price: number; unit: string; moq: number; description: string | null; is_listed_on_marketplace: boolean; organization_id: string }
-  ) {
-    if (payload.is_listed_on_marketplace) {
-      const listingData = {
-        organization_id: payload.organization_id,
-        title: payload.name,
-        description: payload.description,
-        category: payload.category,
-        price: payload.unit_price,
-        currency: "INR",
-        moq: payload.moq,
-        unit: payload.unit,
-        status: "active" as const,
-      };
-
-      if (existingListingId) {
-        await supabase.from("listings").update(listingData).eq("id", existingListingId);
-      } else {
-        const { data: newListing } = await supabase
-          .from("listings")
-          .insert(listingData)
-          .select("id")
-          .single();
-
-        if (newListing) {
-          await supabase.from("products").update({ listing_id: newListing.id }).eq("id", productId);
-        }
-      }
-    } else if (existingListingId) {
-      await supabase.from("listings").update({ status: "withdrawn" }).eq("id", existingListingId);
-      await supabase.from("products").update({ listing_id: null }).eq("id", productId);
-    }
-  }
-
   async function handleDelete(p: DbProduct) {
     if (!orgId) return;
 
-    if (p.listing_id) {
-      await supabase.from("listings").delete().eq("id", p.listing_id);
-    }
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`${API_BASE}/products/${p.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Delete failed");
 
-    const { error } = await supabase.from("products").delete().eq("id", p.id).eq("organization_id", orgId);
-    if (error) {
+      setProducts((prev) => prev.filter((x) => x.id !== p.id));
+      showToast("Product deleted");
+    } catch (err) {
+      console.error("Delete failed:", err);
       showToast("Delete failed");
-      return;
     }
-
-    setProducts((prev) => prev.filter((x) => x.id !== p.id));
-    showToast("Product deleted");
   }
 
   async function toggleMarketplace(p: DbProduct) {
-    const newVal = !p.is_listed_on_marketplace;
-    await supabase.from("products").update({ is_listed_on_marketplace: newVal }).eq("id", p.id);
+    try {
+      const token = await getAuthToken();
+      const newVal = !p.is_listed_on_marketplace;
 
-    await syncListing(p.id, p.listing_id, {
-      name: p.name,
-      category: p.category,
-      unit_price: p.unit_price,
-      unit: p.unit,
-      moq: p.moq,
-      description: p.description,
-      is_listed_on_marketplace: newVal,
-      organization_id: p.organization_id,
-    });
+      if (newVal) {
+        const res = await fetch(`${API_BASE}/products/${p.id}/sync-listing`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error("Sync listing failed");
+      } else {
+        const res = await fetch(`${API_BASE}/products/${p.id}/withdraw-listing`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error("Withdraw listing failed");
+      }
 
-    await fetchProducts();
-    showToast(newVal ? "Listed on marketplace" : "Removed from marketplace");
+      await fetchProducts();
+      showToast(newVal ? "Listed on marketplace" : "Removed from marketplace");
+    } catch (err) {
+      console.error("Toggle marketplace failed:", err);
+      showToast("Failed to update marketplace listing");
+    }
   }
 
   const filteredProducts = useMemo(() => {

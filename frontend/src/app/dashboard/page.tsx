@@ -25,6 +25,13 @@ import {
   ChevronRight
 } from "lucide-react";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+
+async function getAuthToken() {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token;
+}
+
 interface Product {
   id: string;
   name: string;
@@ -98,43 +105,59 @@ function DashboardContent() {
   const [transportTimeDays, setTransportTimeDays] = useState<number>(2);
   const [transportModeFactor, setTransportModeFactor] = useState<number>(0.105);
 
-  useEffect(() => {
-    if (!org?.id) return;
+   useEffect(() => {
+     if (!org?.id) return;
 
-    async function loadData() {
-      try {
-        const [productsRes, negotiationsRes, facilitiesRes, provenanceRes] = await Promise.all([
-          supabase
-            .from("products")
-            .select("*")
-            .eq("organization_id", org!.id),
-          supabase
-            .from("negotiations")
-            .select("*, listing:listings(title, category, price, currency, moq, unit), buyer_org:organizations!negotiations_buyer_id_fkey(name), seller_org:organizations!negotiations_seller_id_fkey(name)")
-            .or(`buyer_id.eq.${org!.id},seller_id.eq.${org!.id}`),
-          supabase
-            .from("facilities")
-            .select("*")
-            .eq("organization_id", org!.id),
-          supabase
-            .from("provenance_records")
-            .select("*")
-            .eq("organization_id", org!.id),
-        ]);
+     async function loadData() {
+       try {
+          const token = await getAuthToken();
+         if (!token) throw new Error("Not authenticated");
 
-        setProducts(productsRes.data ?? []);
-        setNegotiations(negotiationsRes.data ?? []);
-        setFacilities(facilitiesRes.data ?? []);
-        setProvenanceRecords(provenanceRes.data ?? []);
-        setDataLoaded(true);
-      } catch (err) {
-        console.error("Failed to load dashboard data:", err);
-        setDataLoaded(true);
-      }
-    }
+         // Use the new dashboard overview endpoint
+         const overviewRes = await fetch(`${API_BASE}/dashboard/overview`, {
+           headers: { Authorization: `Bearer ${token}` },
+         });
 
-    loadData();
-  }, [org?.id]);
+         if (!overviewRes.ok) throw new Error("Failed to fetch dashboard overview");
+         const overview = await overviewRes.json();
+
+         // Get products for detailed views
+         const productsRes = await fetch(`${API_BASE}/products`, {
+           headers: { Authorization: `Bearer ${token}` },
+         });
+         const productsData = productsRes.ok ? await productsRes.json() : [];
+
+         // Get negotiations for detailed views
+         const negRes = await fetch(`${API_BASE}/negotiation/negotiations/enriched`, {
+           headers: { Authorization: `Bearer ${token}` },
+         });
+         const negData = negRes.ok ? await negRes.json() : [];
+
+         // Get facilities and provenance records directly (for now, until we add those endpoints)
+         const [facilitiesRes, provenanceRes] = await Promise.all([
+           supabase
+             .from("facilities")
+             .select("*")
+             .eq("organization_id", org!.id),
+           supabase
+             .from("provenance_records")
+             .select("*")
+             .eq("organization_id", org!.id),
+         ]);
+
+         setProducts(productsData);
+         setNegotiations(negData);
+         setFacilities(facilitiesRes.data ?? []);
+         setProvenanceRecords(provenanceRes.data ?? []);
+         setDataLoaded(true);
+       } catch (err) {
+         console.error("Failed to load dashboard data:", err);
+         setDataLoaded(true);
+       }
+     }
+
+     loadData();
+   }, [org?.id]);
 
   const purchaseEmissionsKg = purchaseQtyMT * 1000 * steelFactor;
   const salesEmissionsKg = salesQtyUnits * gearFactor;

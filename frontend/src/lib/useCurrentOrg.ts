@@ -11,7 +11,7 @@ export interface CurrentOrg {
 }
 
 const ROLE_LABELS: Record<string, string> = {
-  supplier: "Raw Material Supplier",
+  raw_material_supplier: "Raw Material Supplier",
   manufacturer: "Manufacturer & Component Assembler",
   distributor: "Distributor & Warehouse Operator",
   retailer: "Retailer & Brand Outlet",
@@ -21,7 +21,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const ROLE_PREFIXES: Record<string, string> = {
-  supplier: "SUP",
+  raw_material_supplier: "SUP",
   manufacturer: "MFG",
   distributor: "DST",
   retailer: "RET",
@@ -63,6 +63,7 @@ function writeSessionContext(role: string, orgName: string) {
 
 function normalizeRole(raw: string | null | undefined): string {
   const value = (raw || "manufacturer").toLowerCase().trim();
+  if (value === "supplier") return "raw_material_supplier";
   return value in ROLE_LABELS ? value : "manufacturer";
 }
 

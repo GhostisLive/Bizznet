@@ -43,8 +43,11 @@ export default function LoginPage() {
         .maybeSingle();
 
       if (!orgData && (user.user_metadata?.role || user.user_metadata?.org_name)) {
-        const metaRole = ["supplier","manufacturer","distributor","retailer","transporter","auditor","admin"].includes(user.user_metadata?.role)
-          ? user.user_metadata.role
+        const metadataRole = user.user_metadata?.role === "supplier"
+          ? "raw_material_supplier"
+          : user.user_metadata?.role;
+        const metaRole = ["raw_material_supplier","manufacturer","distributor","retailer","transporter","auditor","admin"].includes(metadataRole)
+          ? metadataRole
           : "manufacturer";
         const { data: repaired } = await supabase
           .from("organizations")

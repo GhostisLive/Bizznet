@@ -26,6 +26,13 @@ import { useAuth } from "@/lib/AuthProvider";
 import { useCurrentOrg } from "@/lib/useCurrentOrg";
 import { supabase } from "@/utils/supabaseClient";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+
+async function getAuthToken() {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token;
+}
+
 interface DbListing {
   id: string;
   organization_id: string;
@@ -98,6 +105,9 @@ const PROVENANCE_LABELS: Record<string, "Verified" | "Audited" | "Self-Reported"
   self_reported: "Self-Reported",
 };
 
+const formatPrice = (p: number) =>
+  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(p);
+
 function getRecommendationConfig(role: string): {
   label: string;
   description: string;
@@ -106,33 +116,45 @@ function getRecommendationConfig(role: string): {
   switch (role) {
     case "manufacturer":
       return {
-        label: "Raw Materials for Manufacturing",
-        description: "Sourced from verified suppliers for your production lines",
-        match: (l) => l.sellerRole === "supplier",
+        label: "Matched Supply Chain Listings",
+        description: "Relevant suppliers and downstream trading partners",
+        match: (l) =>
+          l.sellerRole === "raw_material_supplier" ||
+          l.sellerRole === "distributor" ||
+          l.sellerRole === "transporter" ||
+          l.sellerRole === "retailer",
       };
     case "retailer":
       return {
         label: "Products to Stock",
         description: "Finished goods from distributors and manufacturers",
-        match: (l) => l.sellerRole === "distributor" || l.sellerRole === "manufacturer",
+        match: (l) =>
+          l.sellerRole === "manufacturer" ||
+          l.sellerRole === "transporter" ||
+          l.sellerRole === "distributor",
       };
     case "distributor":
       return {
         label: "Products to Distribute",
         description: "Bulk finished goods ready for onward sale",
-        match: (l) => l.sellerRole === "manufacturer",
+        match: (l) =>
+          l.sellerRole === "manufacturer" || l.sellerRole === "retailer",
       };
-    case "supplier":
+    case "raw_material_supplier":
       return {
-        label: "Buyers & Downstream Partners",
-        description: "Organizations sourcing raw materials",
-        match: () => true,
+        label: "Distributor & Logistics Listings",
+        description: "Relevant downstream and transport partners",
+        match: (l) => l.sellerRole === "distributor" || l.sellerRole === "transporter",
       };
     case "transporter":
       return {
-        label: "All Shipments Needing Transport",
-        description: "Every active listing requiring logistics",
-        match: () => true,
+        label: "Supply Chain Listings",
+        description: "Organizations connected to your logistics network",
+        match: (l) =>
+          l.sellerRole === "manufacturer" ||
+          l.sellerRole === "distributor" ||
+          l.sellerRole === "retailer" ||
+          l.sellerRole === "raw_material_supplier",
       };
     case "auditor":
       return {
@@ -172,6 +194,7 @@ function MarketplaceContent() {
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
   const [provenanceFilter, setProvenanceFilter] = useState("all");
+  const [initiatingNegotiation, setInitiatingNegotiation] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY_FILTERS);
@@ -278,41 +301,56 @@ function MarketplaceContent() {
   async function fetchListings() {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("listings")
-        .select(`
-          *,
-          organizations ( id, name, role ),
-          facility:facilities ( name, location, carbon_intensity_factor ),
-          provenance_snapshot:listing_provenance_snapshots ( confidence_score, provenance_grade, active_provenance_records )
-        `)
-        .eq("status", "active")
-        .order("created_at", { ascending: false });
+      const token = await getAuthToken();
+      if (!token) throw new Error("Not authenticated");
 
-      if (error) throw error;
+      // Build query params
+      const params = new URLSearchParams();
+      if (selectedCategory !== "all") params.append("category", selectedCategory);
+      if (searchQuery) params.append("search", searchQuery);
+      if (priceMin) params.append("min_price", priceMin);
+      if (priceMax) params.append("max_price", priceMax);
+      if (provenanceFilter !== "all") params.append("provenance_filter", provenanceFilter);
 
-      const rawListings: any[] = data || [];
+      const res = await fetch(`${API_BASE}/marketplace/listings?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-      const provMap = new Map<string, any[]>();
-      const provIds = rawListings
-        .filter((l) => l.organization_id)
-        .map((l) => l.organization_id);
-      const { data: provData } = await supabase
-        .from("provenance_records")
-        .select("*")
-        .in("organization_id", provIds.length ? provIds : [""]);
+      if (!res.ok) throw new Error("Failed to fetch listings");
 
-      for (const rec of provData || []) {
-        if (!provMap.has(rec.organization_id)) provMap.set(rec.organization_id, []);
-        provMap.get(rec.organization_id)!.push(rec);
-      }
-
-      const enriched = rawListings.map((l) =>
-        enrichListing({
-          ...l,
-          provenance_records: provMap.get(l.organization_id) || [],
-        } as DbListing)
-      );
+      const data = await res.json();
+      
+      // Map backend response to frontend EnrichedListing format
+      const enriched = data.map((l: any) => ({
+        id: l.id,
+        title: l.title,
+        description: l.description,
+        category: l.category,
+        price: l.price,
+        currency: l.currency,
+        moq: l.moq,
+        unit: l.unit,
+        status: l.status,
+        created_at: l.created_at,
+        supplier: l.supplier,
+        sellerRole: l.seller_role,
+        provenance: l.provenance_grade === "verified" ? "Verified" : l.provenance_grade === "audited" ? "Audited" : "Self-Reported",
+        provenanceScore: l.confidence_score,
+        co2: `${l.carbon_intensity || 2.1} kg CO₂e`,
+        labour: "Verified",
+        companyTrust: "Good",
+        location: l.location,
+        sellerAddress: l.location,
+        stock: "In Stock",
+        transitTime: "2-3 Business Days",
+        transitCost: "Quoted on RFQ",
+        transitBearer: "Seller Paid (FOB Destination)",
+        imageColor: "#E8E0D4",
+        itemTypeIcon: "Package",
+        formattedPrice: `${formatPrice(l.price)}/${l.unit}`,
+        formattedMoq: `${l.moq} ${l.unit}`,
+        provenanceRecordCount: l.provenance_record_count,
+      }));
 
       setListings(enriched);
     } catch (error) {
@@ -320,6 +358,47 @@ function MarketplaceContent() {
       setListings([]);
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function handleRequestQuote(listingId: string) {
+    if (!user || !authOrg) {
+      alert("Please sign in to request a quote");
+      return;
+    }
+
+    setInitiatingNegotiation(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error("Not authenticated");
+
+      const res = await fetch(`${API_BASE}/negotiation/initiate`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          listing_id: listingId,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Failed to initiate negotiation");
+      }
+
+      const negotiation = await res.json();
+      
+      setIsDetailModalOpen(false);
+      alert(`✓ Negotiation opened. Submit your first offer from the negotiation page.`);
+      window.location.href = "/negotiations";
+    } catch (err: any) {
+      console.error("Failed to initiate negotiation:", err);
+      alert(`Error: ${err.message || "Failed to initiate negotiation"}`);
+    } finally {
+      setInitiatingNegotiation(false);
     }
   }
 
@@ -738,24 +817,21 @@ function MarketplaceContent() {
                 Close
               </button>
               <button
-                onClick={() => {
-                  alert(`Inquiry submitted for ${activeItem.title}! Opening negotiation channel.`);
-                  setIsDetailModalOpen(false);
-                }}
-                className="px-6 py-2.5 bg-[#C68A17] hover:bg-[#a87314] text-white font-bold text-xs rounded-xl transition-colors shadow-sm inline-flex items-center gap-2"
+                onClick={() => handleRequestQuote(activeItem.id)}
+                disabled={initiatingNegotiation}
+                className="px-6 py-2.5 bg-[#2C2418] hover:bg-[#4E4433] disabled:bg-gray-400 text-white font-bold text-xs rounded-xl transition-colors shadow-sm inline-flex items-center justify-center gap-2"
               >
-                <ShoppingCart size={14} />
-                Add to Inquiry
-              </button>
-              <button
-                onClick={() => {
-                  alert(`Quote request sent to ${activeItem.supplier} for ${activeItem.title}.`);
-                  setIsDetailModalOpen(false);
-                }}
-                className="px-6 py-2.5 bg-[#2C2418] hover:bg-[#4E4433] text-white font-bold text-xs rounded-xl transition-colors shadow-sm inline-flex items-center justify-center gap-2"
-              >
-                Request Quote
-                <ArrowRight size={14} />
+                {initiatingNegotiation ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Initiating...
+                  </>
+                ) : (
+                  <>
+                    Start Negotiation
+                    <ArrowRight size={14} />
+                  </>
+                )}
               </button>
             </div>
           </div>

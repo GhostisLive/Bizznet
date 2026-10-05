@@ -1,0 +1,16 @@
+user test raw material supplier
+email: kingkong41664@gmail.com
+password: kingkong41664@gmail.com
+
+
+user test manufacturer
+email: sangramkpatra03@gmail.com
+password: sangramkpatra03@gmail.com
+
+user test distribut
+email: ghostislive2@gmail.com
+password: ghostislive2@gmail.com
+
+user test auditor
+email: rwitabratohanpal.k.25@gmail.com
+password: rwitabratohanpal.k.25@gmail.com

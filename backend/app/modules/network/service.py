@@ -3,18 +3,60 @@ from sqlalchemy.future import select
 # pyrefly: ignore [missing-import]
 from app.modules.network.models import Organization, Facility, OrganizationCreate, FacilityCreate
 
-# Counterpart visibility matrix from BACKEND_PLAN
+# Counterparts whose listings a role may discover and negotiate with.
+MARKETPLACE_SELLER_ROLES: dict[str, list[str]] = {
+    "raw_material_supplier": ["distributor", "transporter"],
+    "manufacturer": [
+        "raw_material_supplier",
+        "distributor",
+        "transporter",
+        "retailer",
+    ],
+    "distributor": ["manufacturer", "retailer"],
+    "transporter": [
+        "manufacturer",
+        "distributor",
+        "retailer",
+        "raw_material_supplier",
+    ],
+    "retailer": ["manufacturer", "transporter", "distributor"],
+    "auditor": [],
+    "admin": [],
+}
+ROLE_ALIASES = {"supplier": "raw_material_supplier"}
+
+# Counterpart visibility for the network directory follows the same trading
+# relationships; auditors and admins retain broad operational visibility.
 COUNTERPART_MAPPING: dict[str, list[str]] = {
-    "raw_material_supplier": ["manufacturer", "transporter", "auditor"],
-    "manufacturer": ["raw_material_supplier", "distributor", "transporter", "auditor"],
-    "distributor": ["manufacturer", "retailer", "transporter", "auditor"],
-    "retailer": ["manufacturer", "distributor", "transporter", "auditor"],
-    "transporter": ["raw_material_supplier", "manufacturer", "distributor", "retailer", "auditor"],
-    "auditor": ["raw_material_supplier", "manufacturer", "distributor", "retailer", "transporter"],
-    "admin": ["raw_material_supplier", "manufacturer", "distributor", "retailer", "transporter", "auditor"],
+    "raw_material_supplier": ["distributor", "transporter"],
+    "manufacturer": [
+        "raw_material_supplier",
+        "distributor",
+        "transporter",
+        "retailer",
+    ],
+    "distributor": ["manufacturer", "retailer"],
+    "transporter": [
+        "manufacturer",
+        "distributor",
+        "retailer",
+        "raw_material_supplier",
+    ],
+    "retailer": ["manufacturer", "transporter", "distributor"],
+    "auditor": [],
+    "admin": [],
 }
 
-VALID_ROLES = set(COUNTERPART_MAPPING.keys())
+VALID_ROLES = set(MARKETPLACE_SELLER_ROLES.keys())
+
+
+def normalize_role(role: str | None) -> str:
+    value = (role or "manufacturer").strip().lower()
+    return ROLE_ALIASES.get(value, value)
+
+
+def role_variants(role: str) -> list[str]:
+    return [role, "supplier"] if role == "raw_material_supplier" else [role]
 
 
 async def register_organization(
@@ -27,7 +69,7 @@ async def register_organization(
         id=user_id,
         name=data.name,
         tax_id=data.tax_id,
-        role=data.role,
+        role=normalize_role(data.role),
         status="pending_verification",
     )
     db.add(org)
@@ -41,7 +83,12 @@ async def get_counterparts(
     db: AsyncSession,
 ) -> list[Organization]:
     """Returns organizations whose roles are visible to the given role."""
-    allowed_roles = COUNTERPART_MAPPING.get(role, [])
+    allowed_roles = COUNTERPART_MAPPING.get(normalize_role(role), [])
+    allowed_roles = [
+        variant
+        for allowed_role in allowed_roles
+        for variant in role_variants(allowed_role)
+    ]
     query = select(Organization).where(
         Organization.role.in_(allowed_roles),
         Organization.status != "suspended",

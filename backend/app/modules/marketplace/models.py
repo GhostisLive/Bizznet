@@ -49,3 +49,28 @@ class ListingRead(SQLModel):
     unit: str
     status: str
     created_at: datetime
+
+
+class ListingWithDetails(SQLModel):
+    """Enriched listing with organization, facility, and provenance data."""
+    id: str
+    title: str
+    description: Optional[str]
+    category: Optional[str]
+    price: float
+    currency: str
+    moq: float
+    unit: str
+    status: str
+    created_at: str
+    organization_id: str
+    facility_id: Optional[str]
+    # Enriched fields
+    supplier: str
+    seller_role: str
+    provenance_grade: str
+    confidence_score: int
+    provenance_record_count: int
+    carbon_intensity: float
+    location: str
+    facility_name: Optional[str]

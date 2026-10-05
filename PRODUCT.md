@@ -164,3 +164,52 @@ Organization → Facility → Supplier → Material → MaterialFlow
 - **AI-assisted negotiation** — suggests counter-terms based on market pricing and provenance grade
 - **Smart RFQ matching** — ranks bids by capability fit, price, and provenance grade
 - **Disclosure drafting** — LLM-generated narrative sections for BRSR/CSRD reports
+
+# User Matching Matrix
+
+Only users belonging to the roles explicitly listed in the matrix below
+may appear in a user's matched-user listing.
+
+| Current User Role | Matched User Roles |
+|---|---|
+| Manufacturer | Raw Material Supplier, Distributor, Retailer |
+| Distributor | Manufacturer, Retailer |
+| Transporter | Manufacturer, Distributor, Retailer, Raw Material Supplier |
+| Retailer | Manufacturer, Distributor |
+
+## Literal Matching Rules
+
+```text
+MATCH_MATRIX = {
+
+  "Raw Material Supplier": [
+    "Distributor",
+    "Transporter"
+  ],
+
+  "Manufacturer": [
+    "Raw Material Supplier",
+    "Distributor",
+    "Transporter",
+    "Retailer"
+  ],
+
+  "Distributor": [
+    "Manufacturer",
+    "Retailer"
+  ],
+
+  "Transporter": [
+    "Manufacturer",
+    "Distributor",
+    "Retailer",
+    "Raw Material Supplier"
+  ],
+
+  "Retailer": [
+    "Manufacturer",
+    "Transporter",
+    "Distributor"
+  ]
+
+}

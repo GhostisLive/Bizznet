@@ -8,6 +8,7 @@ from app.database import get_db
 from app.auth.security import verify_token
 # pyrefly: ignore [missing-import]
 from app.auth.models import JWTPayload, CurrentUser
+from app.modules.network.service import normalize_role
 # pyrefly: ignore [missing-import]
 from app.modules.network.models import Organization
 
@@ -34,7 +35,7 @@ async def get_current_user(
         return CurrentUser(
             id=payload.sub,
             email=payload.email,
-            role=meta_role,
+            role=normalize_role(meta_role),
             organization_id=payload.sub,
         )
 
@@ -47,7 +48,7 @@ async def get_current_user(
     return CurrentUser(
         id=payload.sub,
         email=payload.email,
-        role=org.role,
+        role=normalize_role(org.role),
         organization_id=org.id,
     )
 

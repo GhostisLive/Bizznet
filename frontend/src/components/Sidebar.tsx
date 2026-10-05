@@ -16,7 +16,8 @@ import {
   Menu,
   X,
   RefreshCw,
-  Receipt
+  Receipt,
+  MessageSquare
 } from "lucide-react";
 
 interface SidebarProps {
@@ -37,6 +38,7 @@ export default function Sidebar({
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { label: "Marketplace", href: "/marketplace", icon: Store },
     { label: "Products", href: "/products", icon: Package },
+    { label: "Messages", href: "/messages", icon: MessageSquare },
     { label: "Negotiations", href: "/negotiations", icon: Handshake, badge: "14" },
     { label: "Transactions", href: "/transactions", icon: Receipt },
     { label: "Labour Audit", href: "/labour-audit", icon: UserCheck },

@@ -123,7 +123,7 @@ export default function SignupPage() {
                     onChange={(e) => setRole(e.target.value)}
                     className="w-full px-3.5 py-2.5 border border-[#E8E0D4] bg-[#FAF8F5] rounded-lg text-xs text-[#2C2418] focus:outline-none focus:ring-1 focus:ring-[#6B5B3E] focus:border-[#6B5B3E]"
                   >
-                    <option value="supplier">Raw Material Supplier</option>
+                    <option value="raw_material_supplier">Raw Material Supplier</option>
                     <option value="manufacturer">Manufacturer / Component Assembler</option>
                     <option value="distributor">Distributor / Warehouse Operator</option>
                     <option value="retailer">Retailer / Brand Outlet</option>

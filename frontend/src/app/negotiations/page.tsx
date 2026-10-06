@@ -273,9 +273,10 @@ export default function NegotiationsPage() {
         .insert({
           negotiation_id: activeNeg.id,
           sender_id: org.id,
-          price: Number(price),
+          price: price,
           moq: activeNeg.listing.moq || 1,
-          terms: null,
+          terms: "Accepted deal terms",
+          provenance_requirement: "none",
         })
         .select("id, sender_id, price, moq, terms, created_at")
         .single();
@@ -293,7 +294,7 @@ export default function NegotiationsPage() {
           sender_id: data.sender_id,
           price: data.price,
           moq: data.moq,
-          provenance_requirement: null,
+          provenance_requirement: "none",
           terms: data.terms,
           created_at: data.created_at,
           type: "bid"
@@ -378,6 +379,7 @@ export default function NegotiationsPage() {
           price: acceptPrice,
           moq: activeNeg.listing.moq || 1,
           terms: "Accepted deal terms",
+          provenance_requirement: "none",
         })
         .select("id, sender_id, price, moq, terms, created_at")
         .single();

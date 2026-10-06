@@ -260,7 +260,11 @@ export default function NegotiationsPage() {
     if (!activeNeg || !org) return;
     const role = getUserRole(activeNeg);
     const price = role === "buyer" ? bidInput : askInput;
-    if (price === "" || typeof price !== "number" || isNaN(price)) return;
+    
+    if (price === "" || price === null || typeof price !== "number" || isNaN(price)) {
+      alert("Please enter a valid price");
+      return;
+    }
 
     setSubmittingBid(true);
     try {
@@ -269,56 +273,163 @@ export default function NegotiationsPage() {
         .insert({
           negotiation_id: activeNeg.id,
           sender_id: org.id,
-          price,
+          price: Number(price),
           moq: activeNeg.listing.moq || 1,
           terms: null,
         })
         .select("id, sender_id, price, moq, terms, created_at")
         .single();
 
-      if (!error && data) {
+      if (error) {
+        console.error("Supabase error:", error);
+        alert("Failed to submit offer: " + error.message);
+        return;
+      }
+
+      if (data) {
+        const newBid: Bid = {
+          id: data.id,
+          negotiation_id: activeNeg.id,
+          sender_id: data.sender_id,
+          price: data.price,
+          moq: data.moq,
+          provenance_requirement: null,
+          terms: data.terms,
+          created_at: data.created_at,
+          type: "bid"
+        };
+
         setNegotiations((prev) =>
           prev.map((n) => {
             if (n.id !== activeNeg.id) return n;
-            return { ...n, bids: [...n.bids, data as Bid] };
+            return { ...n, bids: [...n.bids, newBid] };
           })
         );
+        
         if (role === "buyer") setBidInput("");
         else setAskInput("");
 
-        const sellerAsk = getLatestSellerAsk(activeNeg);
-        const buyerBid = role === "buyer" ? price : getLatestBuyerBid(activeNeg);
-        if (
-          sellerAsk !== null &&
-          buyerBid !== null &&
-          ((role === "buyer" && buyerBid >= sellerAsk) ||
-            (role === "seller" && price <= (buyerBid ?? Infinity)))
-        ) {
-          await supabase
-            .from("negotiations")
-            .update({ status: "agreed" })
-            .eq("id", activeNeg.id);
-          setNegotiations((prev) =>
-            prev.map((n) =>
-              n.id === activeNeg.id ? { ...n, status: "agreed" } : n
-            )
-          );
-        } else {
-          await supabase
-            .from("negotiations")
-            .update({ status: "countered" })
-            .eq("id", activeNeg.id);
-          setNegotiations((prev) =>
-            prev.map((n) =>
-              n.id === activeNeg.id ? { ...n, status: "countered" } : n
-            )
-          );
-        }
+        // Check for agreement after submitting bid
+        await checkAndUpdateAgreement(activeNeg.id, role, Number(price));
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to submit bid:", err);
+      alert("Failed to submit offer: " + err.message);
     } finally {
       setSubmittingBid(false);
+    }
+  }
+
+  async function checkAndUpdateAgreement(negotiationId: string, submitterRole: "buyer" | "seller", submittedPrice: number) {
+    const neg = negotiations.find(n => n.id === negotiationId);
+    if (!neg) return;
+
+    const currentSellerAsk = getLatestSellerAsk(neg);
+    const currentBuyerBid = getLatestBuyerBid(neg);
+
+    // Check if both parties have agreed on the same price
+    // Agreement happens when buyer bid >= seller ask (buyer accepts seller's price)
+    const agreed = currentSellerAsk !== null && currentBuyerBid !== null && currentBuyerBid >= currentSellerAsk;
+
+    if (agreed) {
+      await supabase
+        .from("negotiations")
+        .update({ status: "agreed" })
+        .eq("id", negotiationId);
+      setNegotiations((prev) =>
+        prev.map((n) =>
+          n.id === negotiationId ? { ...n, status: "agreed" } : n
+        )
+      );
+      alert("Deal agreed! Both parties have agreed on the price.");
+    } else {
+      await supabase
+        .from("negotiations")
+        .update({ status: "countered" })
+        .eq("id", negotiationId);
+      setNegotiations((prev) =>
+        prev.map((n) =>
+          n.id === negotiationId ? { ...n, status: "countered" } : n
+        )
+      );
+    }
+  }
+
+  async function handleAcceptOffer() {
+    if (!activeNeg || !org) return;
+    
+    const currentSellerAsk = getLatestSellerAsk(activeNeg);
+    const currentBuyerBid = getLatestBuyerBid(activeNeg);
+    
+    if (currentSellerAsk === null || currentBuyerBid === null) {
+      alert("No offers to accept");
+      return;
+    }
+
+    try {
+      // Create an acceptance bid
+      const acceptPrice = myRole === "buyer" ? currentSellerAsk : currentBuyerBid;
+      
+      const { data, error } = await supabase
+        .from("negotiation_bids")
+        .insert({
+          negotiation_id: activeNeg.id,
+          sender_id: org.id,
+          price: acceptPrice,
+          moq: activeNeg.listing.moq || 1,
+          terms: "Accepted deal terms",
+        })
+        .select("id, sender_id, price, moq, terms, created_at")
+        .single();
+
+      if (error) {
+        console.error("Accept error:", error);
+        alert("Failed to accept: " + error.message);
+        return;
+      }
+
+      // Update negotiation status to agreed
+      await supabase
+        .from("negotiations")
+        .update({ status: "agreed" })
+        .eq("id", activeNeg.id);
+      
+      setNegotiations((prev) =>
+        prev.map((n) =>
+          n.id === activeNeg.id ? { ...n, status: "agreed" } : n
+        )
+      );
+      
+      alert("Offer accepted! Deal agreed.");
+    } catch (err: any) {
+      console.error("Failed to accept offer:", err);
+      alert("Failed to accept: " + err.message);
+    }
+  }
+
+  async function handleRejectOffer() {
+    if (!activeNeg || !org) return;
+    
+    if (!confirm("Are you sure you want to reject this offer and cancel the negotiation?")) {
+      return;
+    }
+
+    try {
+      await supabase
+        .from("negotiations")
+        .update({ status: "cancelled" })
+        .eq("id", activeNeg.id);
+      
+      setNegotiations((prev) =>
+        prev.map((n) =>
+          n.id === activeNeg.id ? { ...n, status: "cancelled" } : n
+        )
+      );
+      
+      alert("Offer rejected. Negotiation cancelled.");
+    } catch (err: any) {
+      console.error("Failed to reject offer:", err);
+      alert("Failed to reject: " + err.message);
     }
   }
 
@@ -740,6 +851,26 @@ export default function NegotiationsPage() {
                       <DollarSign size={14} />
                     )}
                     Submit Offer
+                  </button>
+                </div>
+
+                {/* Accept/Reject Buttons */}
+                <div className="flex gap-3 mt-3">
+                  <button
+                    onClick={handleAcceptOffer}
+                    disabled={submittingBid}
+                    className="flex-1 px-4 py-2 bg-[#2E7D5B] hover:bg-[#247A53] disabled:bg-gray-400 text-white rounded-lg text-xs font-bold transition-colors"
+                  >
+                    {myRole === "buyer"
+                      ? "Accept Their Ask"
+                      : "Accept Buyer Bid"}
+                  </button>
+                  <button
+                    onClick={handleRejectOffer}
+                    disabled={submittingBid}
+                    className="flex-1 px-4 py-2 ml-3 bg-[#DC2626] hover:bg-[#B91C1C] disabled:bg-gray-400 text-white rounded-lg text-xs font-bold transition-colors"
+                  >
+                    Reject Offer
                   </button>
                 </div>
 

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Sidebar from "@/components/Sidebar";
 import { useAuth } from "@/lib/AuthProvider";
 import { useCurrentOrg } from "@/lib/useCurrentOrg";
-import { supabase } from "@/utils/supabaseClient";
+import { api } from "@/lib/api";
 import {
   Leaf,
   ShieldCheck,
@@ -52,24 +52,18 @@ export default function CarbonAuditPage() {
   useEffect(() => {
     if (authLoading || !org) return;
 
-    async function fetchData() {
-      setDataLoading(true);
+     async function fetchData() {
+       setDataLoading(true);
 
-      const [facResult, provResult] = await Promise.all([
-        supabase
-          .from("facilities")
-          .select("id, name, location, carbon_intensity_factor, created_at")
-          .eq("organization_id", org!.id),
-        supabase
-          .from("provenance_records")
-          .select("id, type, verifying_party, payload, verified_at, created_at")
-          .eq("organization_id", org!.id),
-      ]);
+       const [facilitiesData, provenanceData] = await Promise.all([
+         api.request(`/network/facilities`),
+         api.getProvenanceRecords(),
+       ]);
 
-      setFacilities(facResult.data ?? []);
-      setProvenanceRecords(provResult.data ?? []);
-      setDataLoading(false);
-    }
+       setFacilities(facilitiesData);
+       setProvenanceRecords(provenanceData);
+       setDataLoading(false);
+     }
 
     fetchData();
   }, [authLoading, org]);

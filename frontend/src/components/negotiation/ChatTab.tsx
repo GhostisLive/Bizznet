@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef, useCallback, type Dispatch, type SetStateAction } from "react";
 import { Loader2, MessageSquare, Send } from "lucide-react";
 import { formatTime } from "@/lib/formatTime";
-import { supabase } from "@/utils/supabaseClient";
 
 interface Message {
   id: string;
@@ -86,13 +85,8 @@ export function ChatTabContent({
       ? `${activeNeg?.buyer?.name || "Buyer"} (Buyer)`
       : `${activeNeg?.seller?.name || "Seller"} (Seller)`;
 
-    supabase
-      .channel(`negotiation-messages-${activeNegId}`)
-      .send({
-        type: "broadcast",
-        event: "typing",
-        payload: { userId: org?.id, userName, isTyping },
-      });
+    void isTyping;
+    void userName;
   }, [activeNegId, activeNeg, org]);
 
   function onChatInputChange(e: React.ChangeEvent<HTMLInputElement>) {

@@ -19,14 +19,9 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthProvider";
 import { useCurrentOrg } from "@/lib/useCurrentOrg";
-import { supabase } from "@/utils/supabaseClient";
+import { api } from "@/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
-
-async function getAuthToken() {
-  const { data: { session } } = await supabase.auth.getSession();
-  return session?.access_token;
-}
 
 interface DbOrder {
   id: string;
@@ -112,37 +107,30 @@ function OrdersContent() {
   }, []);
 
   useEffect(() => {
-    const v = { searchQuery, status };
+    const v = { searchQuery, status: statusFilter };
     localStorage.setItem(STORAGE_KEY_ORDERS_FILTERS, JSON.stringify(v));
   }, [searchQuery, statusFilter]);
 
-  useEffect(() => {
-    if (authOrg?.id) {
-      fetchOrders();
-    }
-  }, [authOrg?.id, userRole]);
+   useEffect(() => {
+     if (authOrg?.id) {
+       fetchOrders();
+     }
+   }, [authOrg?.id, userRole]);
 
-  async function fetchOrders() {
-    if (!authOrg?.id) return;
-    setLoading(true);
-    try {
-      const token = await getAuthToken();
-      if (!token) throw new Error("Not authenticated");
-
-      const res = await fetch(`${API_BASE}/orders`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!res.ok) throw new Error("Failed to fetch orders");
-      const data = await res.json();
-      setOrders(data || []);
-    } catch (error) {
-      console.error("Failed to fetch orders:", error);
-      setOrders([]);
-    } finally {
-      setLoading(false);
-    }
-  }
+   async function fetchOrders() {
+     if (!authOrg?.id) return;
+     setLoading(true);
+     try {
+       // Use the ApiClient which already has the token set from login
+       const data = await api.request<DbOrder[]>('/orders');
+       setOrders(data || []);
+     } catch (error) {
+       console.error("Failed to fetch orders:", error);
+       setOrders([]);
+     } finally {
+       setLoading(false);
+     }
+   }
 
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
@@ -157,13 +145,10 @@ function OrdersContent() {
       // Role-based filtering
       let matchesRole = true;
       if (userRole === "distributor" || userRole === "retailer") {
-        // Buyers see only their orders
         matchesRole = order.buyer_id === authOrg?.id;
       } else if (userRole === "raw_material_supplier" || userRole === "manufacturer") {
-        // Sellers see only orders where they are the seller
         matchesRole = order.seller_id === authOrg?.id;
       } else if (userRole === "transporter") {
-        // Transporters see orders that are being delivered
         matchesRole = ["shipped", "delivered", "in_transit"].includes(order.status);
       }
 
@@ -302,7 +287,6 @@ function OrdersContent() {
         >
           <option value="all">All Statuses</option>
           <option value="pending">Pending</option>
-          <option value="confirmed">Confirmed</option>
           <option value="in_production">In Production</option>
           <option value="ready_to_ship">Ready to Ship</option>
           <option value="shipped">Shipped</option>

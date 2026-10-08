@@ -166,7 +166,7 @@ Individual, structured offers.
 ## 4. Authentication & Role-Based Access (RLS)
 
 All traffic hitting the modular monolith goes through JWT Validation.
-1. The frontend authenticates directly with Supabase.
+1. The backend authenticates users via Supabase Auth (using credentials from Test_login_cred.txt) and manages JWT token issuance and refresh.
 2. The frontend sends the Bearer JWT token in the `Authorization` header of API requests to the FastAPI backend.
 3. The FastAPI app resolves the public key of the Supabase Auth instance and decodes the JWT locally.
 4. Custom claims mapping:

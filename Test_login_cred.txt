@@ -2,7 +2,6 @@ user test raw material supplier
 email: kingkong41664@gmail.com
 password: kingkong41664@gmail.com
 
-
 user test manufacturer
 email: sangramkpatra03@gmail.com
 password: sangramkpatra03@gmail.com

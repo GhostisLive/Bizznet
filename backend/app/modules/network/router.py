@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from typing import List, Optional
 
 # pyrefly: ignore [missing-import]
 from app.database import get_db
@@ -52,6 +52,33 @@ async def get_counterparts(
     """
     partners = await service.get_counterparts(current_user.role, db)
     return partners
+
+
+@router.get("/facilities", response_model=List[FacilityRead])
+async def list_facilities(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lists all facilities registered under the current user's organization."""
+    return await service.list_facilities(str(current_user.organization_id), db)
+
+
+@router.get("/{org_id}", response_model=OrganizationRead)
+async def get_organization(
+    org_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get an organization by ID.
+    """
+    org = await service.get_organization(org_id, db)
+    if not org:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organization not found",
+        )
+    return org
 
 
 @router.post("/register-facility", response_model=FacilityRead)

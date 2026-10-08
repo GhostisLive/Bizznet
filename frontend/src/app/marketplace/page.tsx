@@ -24,14 +24,9 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthProvider";
 import { useCurrentOrg } from "@/lib/useCurrentOrg";
-import { supabase } from "@/utils/supabaseClient";
+import { api } from "@/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
-
-async function getAuthToken() {
-  const { data: { session } } = await supabase.auth.getSession();
-  return session?.access_token;
-}
 
 interface DbListing {
   id: string;
@@ -298,68 +293,60 @@ function MarketplaceContent() {
     };
   }
 
-  async function fetchListings() {
-    setIsLoading(true);
-    try {
-      const token = await getAuthToken();
-      if (!token) throw new Error("Not authenticated");
+   async function fetchListings() {
+     setIsLoading(true);
+     try {
+       // Use the ApiClient which already has the token set from login
+       // Build query params
+       const params = new URLSearchParams();
+       if (selectedCategory !== "all") params.append("category", selectedCategory);
+       if (searchQuery) params.append("search", searchQuery);
+       if (priceMin) params.append("min_price", priceMin);
+       if (priceMax) params.append("max_price", priceMax);
+       if (provenanceFilter !== "all") params.append("provenance_filter", provenanceFilter);
 
-      // Build query params
-      const params = new URLSearchParams();
-      if (selectedCategory !== "all") params.append("category", selectedCategory);
-      if (searchQuery) params.append("search", searchQuery);
-      if (priceMin) params.append("min_price", priceMin);
-      if (priceMax) params.append("max_price", priceMax);
-      if (provenanceFilter !== "all") params.append("provenance_filter", provenanceFilter);
+       const data = await api.request<any[]>(`/marketplace/listings?${params.toString()}`);
+       
+       // Map backend response to frontend EnrichedListing format
+       const enriched = data.map((l: any) => ({
+         id: l.id,
+         title: l.title,
+         description: l.description,
+         category: l.category,
+         price: l.price,
+         currency: l.currency,
+         moq: l.moq,
+         unit: l.unit,
+         status: l.status,
+         created_at: l.created_at,
+         supplier: l.supplier,
+         sellerRole: l.seller_role,
+         provenance: (l.provenance_grade === "verified" ? "Verified" : l.provenance_grade === "audited" ? "Audited" : "Self-Reported") as EnrichedListing["provenance"],
+         provenanceScore: l.confidence_score,
+         co2: `${l.carbon_intensity || 2.1} kg CO₂e`,
+         labour: "Verified",
+         companyTrust: "Good",
+         location: l.location,
+         sellerAddress: l.location,
+         stock: "In Stock",
+         transitTime: "2-3 Business Days",
+         transitCost: "Quoted on RFQ",
+         transitBearer: "Seller Paid (FOB Destination)",
+         imageColor: "#E8E0D4",
+         itemTypeIcon: "Package",
+         formattedPrice: `${formatPrice(l.price)}/${l.unit}`,
+         formattedMoq: `${l.moq} ${l.unit}`,
+         provenanceRecordCount: l.provenance_record_count,
+       }));
 
-      const res = await fetch(`${API_BASE}/marketplace/listings?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!res.ok) throw new Error("Failed to fetch listings");
-
-      const data = await res.json();
-      
-      // Map backend response to frontend EnrichedListing format
-      const enriched = data.map((l: any) => ({
-        id: l.id,
-        title: l.title,
-        description: l.description,
-        category: l.category,
-        price: l.price,
-        currency: l.currency,
-        moq: l.moq,
-        unit: l.unit,
-        status: l.status,
-        created_at: l.created_at,
-        supplier: l.supplier,
-        sellerRole: l.seller_role,
-        provenance: l.provenance_grade === "verified" ? "Verified" : l.provenance_grade === "audited" ? "Audited" : "Self-Reported",
-        provenanceScore: l.confidence_score,
-        co2: `${l.carbon_intensity || 2.1} kg CO₂e`,
-        labour: "Verified",
-        companyTrust: "Good",
-        location: l.location,
-        sellerAddress: l.location,
-        stock: "In Stock",
-        transitTime: "2-3 Business Days",
-        transitCost: "Quoted on RFQ",
-        transitBearer: "Seller Paid (FOB Destination)",
-        imageColor: "#E8E0D4",
-        itemTypeIcon: "Package",
-        formattedPrice: `${formatPrice(l.price)}/${l.unit}`,
-        formattedMoq: `${l.moq} ${l.unit}`,
-        provenanceRecordCount: l.provenance_record_count,
-      }));
-
-      setListings(enriched);
-    } catch (error) {
-      console.error("Failed to fetch listings:", error);
-      setListings([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }
+       setListings(enriched);
+     } catch (error) {
+       console.error("Failed to fetch listings:", error);
+       setListings([]);
+     } finally {
+       setIsLoading(false);
+     }
+   }
 
   async function handleRequestQuote(listingId: string) {
     if (!user || !authOrg) {
@@ -367,54 +354,45 @@ function MarketplaceContent() {
       return;
     }
 
-    setInitiatingNegotiation(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (!token) throw new Error("Not authenticated");
+     setInitiatingNegotiation(true);
+     try {
+       // Use the ApiClient which already has the token set from login
+       // Get the current token from the api client
+       const token = api.getToken();
+       if (!token) throw new Error("Not authenticated");
 
-      const res = await fetch(`${API_BASE}/negotiation/initiate`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          listing_id: listingId,
-        }),
-      });
+       const res = await fetch(`${API_BASE}/negotiation/initiate`, {
+         method: "POST",
+         headers: {
+           Authorization: `Bearer ${token}`,
+           "Content-Type": "application/json",
+         },
+         body: JSON.stringify({
+           listing_id: listingId,
+         }),
+       });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || "Failed to initiate negotiation");
-      }
+       if (!res.ok) {
+         const err = await res.json();
+         throw new Error(err.detail || "Failed to initiate negotiation");
+       }
 
-      const negotiation = await res.json();
-      
-      setIsDetailModalOpen(false);
-      alert(`✓ Negotiation opened. Submit your first offer from the negotiation page.`);
-      window.location.href = "/negotiations";
-    } catch (err: any) {
-      console.error("Failed to initiate negotiation:", err);
-      alert(`Error: ${err.message || "Failed to initiate negotiation"}`);
-    } finally {
-      setInitiatingNegotiation(false);
-    }
+       const negotiation = await res.json();
+       
+       setIsDetailModalOpen(false);
+       alert(`✓ Negotiation opened. Submit your first offer from the negotiation page.`);
+       window.location.href = "/negotiations";
+     } catch (err: any) {
+       console.error("Failed to initiate negotiation:", err);
+       alert(`Error: ${err.message || "Failed to initiate negotiation"}`);
+     } finally {
+       setInitiatingNegotiation(false);
+     }
   }
 
-  useEffect(() => {
-    fetchListings();
-
-    const channel = supabase
-      .channel("marketplace-listings-live")
-      .on("postgres_changes", { event: "*", schema: "public", table: "listings" }, () => fetchListings())
-      .on("postgres_changes", { event: "*", schema: "public", table: "products" }, () => fetchListings())
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+   useEffect(() => {
+     fetchListings();
+   }, []);
 
   const filteredItems = useMemo(() => {
     return listings.filter((item) => {

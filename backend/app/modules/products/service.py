@@ -181,6 +181,14 @@ async def sync_product_to_listing(
             .where(Listing.id == product.listing_id)
             .values(**listing_data)
         )
+        await db.execute(
+            sql_update(Product)
+            .where(Product.id == product_id)
+            .values(
+                is_listed_on_marketplace=True,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
         await db.commit()
         
         return {
@@ -199,7 +207,11 @@ async def sync_product_to_listing(
         await db.execute(
             sql_update(Product)
             .where(Product.id == product_id)
-            .values(listing_id=listing.id, updated_at=datetime.now(timezone.utc))
+            .values(
+                listing_id=listing.id,
+                is_listed_on_marketplace=True,
+                updated_at=datetime.now(timezone.utc),
+            )
         )
         await db.commit()
         
@@ -237,6 +249,14 @@ async def withdraw_listing(
         sql_update(Listing)
         .where(Listing.id == product.listing_id)
         .values(status="withdrawn")
+    )
+    await db.execute(
+        sql_update(Product)
+        .where(Product.id == product_id)
+        .values(
+            is_listed_on_marketplace=False,
+            updated_at=datetime.now(timezone.utc),
+        )
     )
     await db.commit()
     

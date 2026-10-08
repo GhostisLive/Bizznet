@@ -30,6 +30,14 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 ## 5. Website Design & Skill Integration Guidelines
 Whenever asked to design/implement a website, landing page, dashboard, components, or UI motion, you must load the most appropriate skill(s) using the `skill` tool before proceeding.
 
+---
+
+## 6. Testing Credentials Usage
+- The `Test_login_cred.txt` file contains test credentials for development and testing purposes only
+- These credentials should ONLY be used when testing components using Playwright MCP or other automated testing tools
+- Never use these credentials in production code or for manual testing outside of automated test environments
+- Always clear any test data created during testing sessions
+
 ### available_skills mapping:
 
 #### Design Systems & Themes

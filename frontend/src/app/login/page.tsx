@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/utils/supabaseClient";
-import { broadcastSessionRefresh } from "@/lib/useCurrentOrg";
+import { api } from "@/lib/api";
 import { ShieldCheck, ArrowRight, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
@@ -14,72 +13,34 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setErrorMsg(null);
+   const handleLogin = async (e: React.FormEvent) => {
+     e.preventDefault();
+     setLoading(true);
+     setErrorMsg(null);
 
-    try {
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+     try {
+       // Call the backend login endpoint
+       const { access_token, refresh_token, user } = await api.login(email, password);
+       
+       // Set the token in the API client for subsequent requests
+       api.setToken(access_token);
+       
+       // The user object from the backend should contain the necessary info
+       // For now, we'll redirect to dashboard and let AuthProvider load the session
+       // In a more complete implementation, we might extract role/org from the user object
+       router.push("/dashboard");
+       
+       // Note: broadcastSessionRefresh is no longer needed since we're not using Supabase auth state
+       // but we'll keep the function call for compatibility if it's used elsewhere
+       // broadcastSessionRefresh();
 
-      if (authError) throw authError;
-
-      const user = authData?.user;
-      if (!user) {
-        throw new Error("Unable to retrieve session profile.");
-      }
-
-      // Prefer the authoritative organizations row; if it is missing
-      // (e.g. signup ran under email-confirmation with no session), repair
-      // it from the auth metadata captured during signup.
-      let { data: orgData } = await supabase
-        .from("organizations")
-        .select("id, name, role")
-        .eq("id", user.id)
-        .limit(1)
-        .maybeSingle();
-
-      if (!orgData && (user.user_metadata?.role || user.user_metadata?.org_name)) {
-        const metadataRole = user.user_metadata?.role === "supplier"
-          ? "raw_material_supplier"
-          : user.user_metadata?.role;
-        const metaRole = ["raw_material_supplier","manufacturer","distributor","retailer","transporter","auditor","admin"].includes(metadataRole)
-          ? metadataRole
-          : "manufacturer";
-        const { data: repaired } = await supabase
-          .from("organizations")
-          .upsert({
-            id: user.id,
-            name: user.user_metadata?.org_name || "Unnamed Organization",
-            tax_id: user.user_metadata?.tax_id || `TAX-${Math.floor(100000 + Math.random() * 900000)}`,
-            role: metaRole,
-            status: "pending_verification",
-          })
-          .select("id, name, role")
-          .limit(1)
-          .maybeSingle();
-        if (repaired) orgData = repaired;
-      }
-
-      const role = orgData?.role || user.user_metadata?.role || "manufacturer";
-      const orgName = orgData?.name || user.user_metadata?.org_name || "";
-
-      const target = new URL("/dashboard", window.location.origin);
-      target.searchParams.set("role", role);
-      if (orgName) target.searchParams.set("org", orgName);
-      router.push(`${target.pathname}${target.search}`);
-      broadcastSessionRefresh();
-
-    } catch (err: any) {
-      console.error("Login error:", err);
-      setErrorMsg(err.message || "Invalid authentication credentials.");
-    } finally {
-      setLoading(false);
-    }
-  };
+     } catch (err: any) {
+       console.error("Login error:", err);
+       setErrorMsg(err.message || "Invalid authentication credentials.");
+     } finally {
+       setLoading(false);
+     }
+   };
 
   const handleSandboxBypass = (roleType: string) => {
     router.push(`/dashboard?role=${roleType}&sandbox=true`);

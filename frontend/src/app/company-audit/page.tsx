@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Sidebar from "@/components/Sidebar";
 import { useAuth } from "@/lib/AuthProvider";
 import { useCurrentOrg } from "@/lib/useCurrentOrg";
-import { supabase } from "@/utils/supabaseClient";
+import { api } from "@/lib/api";
 import {
   Building2,
   ShieldCheck,
@@ -43,12 +43,13 @@ export default function CompanyAuditPage() {
     async function fetchData() {
       setDataLoading(true);
 
-      const { data } = await supabase
-        .from("provenance_records")
-        .select("id, type, verifying_party, payload, verified_at, created_at")
-        .eq("organization_id", org!.id);
+      const data = await api.getProvenanceRecords();
+      // Filter to company-related records using backend data
+      const companyData = (data || []).filter(
+        (r: any) => r.payload?.category === "company" || r.payload?.trust_score !== undefined
+      );
 
-      setProvenanceRecords(data ?? []);
+      setProvenanceRecords(companyData);
       setDataLoading(false);
     }
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
 import { useCurrentOrg } from "@/lib/useCurrentOrg";
 import { useAuth } from "@/lib/AuthProvider";
+import { api } from "@/lib/api";
 import {
   Handshake,
   ShieldCheck,
@@ -71,7 +72,7 @@ interface EnrichedNegotiation extends Negotiation {
   listing?: ListingInfo;
   buyer?: OrgInfo;
   seller?: OrgInfo;
-  bids: Bid[];
+  bids?: Bid[];
 }
 
 interface NegotiationWithLastMessage extends EnrichedNegotiation {
@@ -97,31 +98,24 @@ export default function MessagesPage() {
     setFetching(true);
     setError(null);
     try {
-      const { supabase: sb } = await import("@/utils/supabaseClient");
-      const { data: { session } } = await sb.auth.getSession();
-      const token = session?.access_token;
-      if (!token) throw new Error("Not authenticated");
+      // Auth is handled by the api client (token set during login)
+      // We use /auth/me to verify the token is valid with the backend
+      try {
+        await api.getCurrentUserInfo();
+      } catch {
+        throw new Error("Not authenticated");
+      }
 
-      const res = await fetch(`${API_BASE}/negotiation/negotiations/enriched`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!res.ok) throw new Error("Failed to fetch negotiations");
-
-      const enriched: EnrichedNegotiation[] = await res.json();
-
+      const enriched = await api.getNegotiations();
       // Fetch last message for each negotiation
       const negotiationsWithMessages = await Promise.all(
         enriched.map(async (neg) => {
           try {
-            const msgRes = await fetch(`${API_BASE}/negotiation/${neg.id}/messages`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (msgRes.ok) {
-              const messages: Message[] = await msgRes.json();
-              const lastMessage = messages[messages.length - 1];
+            const msgRes = await api.request<Message[]>(`/negotiation/${neg.id}/messages`);
+            if (msgRes && msgRes.length > 0) {
+              const lastMessage = msgRes[msgRes.length - 1];
               // Count unread messages (simplified - messages from other party after last view)
-              const otherPartyMessages = messages.filter(
+              const otherPartyMessages = msgRes.filter(
                 (m) => m.sender_id !== org?.id
               );
               return { ...neg, lastMessage, unreadCount: otherPartyMessages.length };

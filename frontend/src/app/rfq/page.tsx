@@ -30,14 +30,9 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthProvider";
 import { useCurrentOrg } from "@/lib/useCurrentOrg";
-import { supabase } from "@/utils/supabaseClient";
+import { api } from "@/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
-
-async function getAuthToken() {
-  const { data: { session } } = await supabase.auth.getSession();
-  return session?.access_token;
-}
 
 interface DbRFQ {
   id: string;
@@ -220,123 +215,89 @@ function RFQContent() {
     }
   }, [authOrg?.id, userRole]);
 
-  async function fetchRFQs() {
-    if (!authOrg?.id) return;
-    setLoading(true);
-    try {
-      const token = await getAuthToken();
-      if (!token) throw new Error("Not authenticated");
+async function fetchRFQs() {
+     if (!authOrg?.id) return;
+     setLoading(true);
+     try {
+         // Build query params based on role
+         const params = new URLSearchParams();
+         if (userRole === "raw_material_supplier" || userRole === "manufacturer") {
+             params.append("supplier_id", authOrg.id);
+         } else if (userRole === "distributor" || userRole === "retailer") {
+             params.append("buyer_id", authOrg.id);
+         }
 
-      // Build query params based on role
-      const params = new URLSearchParams();
-      if (userRole === "raw_material_supplier" || userRole === "manufacturer") {
-        params.append("supplier_id", authOrg.id);
-      } else if (userRole === "distributor" || userRole === "retailer") {
-        params.append("buyer_id", authOrg.id);
-      }
+         const data = await api.request(`/rfq/rfqs?${params.toString()}`);
+         setRFQs(data || []);
+     } catch (error) {
+         console.error("Failed to fetch RFQs:", error);
+         setRFQs([]);
+     } finally {
+         setLoading(false);
+     }
+ }
 
-      const res = await fetch(`${API_BASE}/rfq/rfqs?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+async function fetchMyBids() {
+     if (!authOrg?.id) return;
+     try {
+         const data = await api.request(`/rfq/my-bids`);
+         setMyBids(data || []);
+     } catch (error) {
+         console.error("Failed to fetch my bids:", error);
+         setMyBids([]);
+     }
+ }
 
-      if (!res.ok) throw new Error("Failed to fetch RFQs");
-      const data = await res.json();
-      setRFQs(data || []);
-    } catch (error) {
-      console.error("Failed to fetch RFQs:", error);
-      setRFQs([]);
-    } finally {
-      setLoading(false);
-    }
-  }
+async function fetchRFQDetail(rfqId: string) {
+     try {
+         const [rfqData, bidsData] = await Promise.all([
+             api.request(`/rfq/rfqs/${rfqId}`),
+             api.request(`/rfq/rfqs/${rfqId}/bids`),
+         ]);
 
-  async function fetchMyBids() {
-    if (!authOrg?.id) return;
-    try {
-      const token = await getAuthToken();
-      if (!token) throw new Error("Not authenticated");
+         setActiveRFQ(rfqData);
+         setActiveBids(bidsData || []);
+     } catch (error) {
+         console.error("Failed to fetch RFQ detail:", error);
+         setActiveRFQ(null);
+         setActiveBids([]);
+     }
+ }
 
-      const res = await fetch(`${API_BASE}/rfq/my-bids`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+async function handleCreateRFQ() {
+     if (!authOrg?.id || !formTitle.trim()) return;
 
-      if (!res.ok) throw new Error("Failed to fetch my bids");
-      const data = await res.json();
-      setMyBids(data || []);
-    } catch (error) {
-      console.error("Failed to fetch my bids:", error);
-      setMyBids([]);
-    }
-  }
+     const rfqData = {
+         title: formTitle.trim(),
+         description: formDescription.trim() || null,
+         category: formCategory,
+         quantity_required: Number(formQuantity) || 0,
+         unit: formUnit,
+         budget_min: formBudgetMin ? Number(formBudgetMin) : null,
+         budget_max: formBudgetMax ? Number(formBudgetMax) : null,
+         currency: "INR",
+         delivery_deadline: null,
+         delivery_location: null,
+         provenance_requirement: formProvenanceReq.trim() || null,
+         additional_requirements: formAdditionalReq.trim() ? JSON.parse(formAdditionalReq) : null,
+         expires_at: formExpiresAt || null,
+     };
 
-  async function fetchRFQDetail(rfqId: string) {
-    try {
-      const token = await getAuthToken();
-      if (!token) throw new Error("Not authenticated");
+     try {
+         await api.request(`/rfq/rfqs`, {
+             method: "POST",
+             body: JSON.stringify(rfqData),
+         });
 
-      const [rfqRes, bidsRes] = await Promise.all([
-        fetch(`${API_BASE}/rfq/rfqs/${rfqId}`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${API_BASE}/rfq/rfqs/${rfqId}/bids`, { headers: { Authorization: `Bearer ${token}` } }),
-      ]);
-
-      if (!rfqRes.ok) throw new Error("Failed to fetch RFQ");
-      if (!bidsRes.ok) throw new Error("Failed to fetch bids");
-
-      const rfqData = await rfqRes.json();
-      const bidsData = await bidsRes.json();
-
-      setActiveRFQ(rfqData);
-      setActiveBids(bidsData || []);
-    } catch (error) {
-      console.error("Failed to fetch RFQ detail:", error);
-      setActiveRFQ(null);
-      setActiveBids([]);
-    }
-  }
-
-  async function handleCreateRFQ() {
-    if (!authOrg?.id || !formTitle.trim()) return;
-
-    const rfqData = {
-      title: formTitle.trim(),
-      description: formDescription.trim() || null,
-      category: formCategory,
-      quantity_required: Number(formQuantity) || 0,
-      unit: formUnit,
-      budget_min: formBudgetMin ? Number(formBudgetMin) : null,
-      budget_max: formBudgetMax ? Number(formBudgetMax) : null,
-      currency: "INR",
-      delivery_deadline: null,
-      delivery_location: null,
-      provenance_requirement: formProvenanceReq.trim() || null,
-      additional_requirements: formAdditionalReq.trim() ? JSON.parse(formAdditionalReq) : null,
-      expires_at: formExpiresAt || null,
-    };
-
-    try {
-      const token = await getAuthToken();
-      if (!token) throw new Error("Not authenticated");
-
-      const res = await fetch(`${API_BASE}/rfq/rfqs`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify(rfqData),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || "Create failed");
-      }
-
-      setIsCreateModalOpen(false);
-      resetRFQForm();
-      await fetchRFQs();
-      showToast("RFQ created successfully");
-    } catch (err: any) {
-      console.error("Create RFQ failed:", err);
-      showToast("Error: " + (err.message || "Create failed"));
-    }
-  }
+         setIsCreateModalOpen(false);
+         resetRFQForm();
+         await fetchRFQs();
+         showToast("RFQ created successfully");
+     } catch (err: any) {
+         console.error("Create RFQ failed:", err);
+         showToast("Error: " + (err.message || "Create failed"));
+     }
+ }
 
   async function handleSubmitBid() {
     if (!biddingRFQ || !authOrg?.id || !bidPrice.trim()) return;
@@ -358,19 +319,10 @@ function RFQContent() {
     };
 
     try {
-      const token = await getAuthToken();
-      if (!token) throw new Error("Not authenticated");
-
-      const res = await fetch(`${API_BASE}/rfq/rfqs/${biddingRFQ.id}/bids`, {
+      await api.request(`/rfq/rfqs/${biddingRFQ.id}/bids`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify(bidData),
       });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || "Submit failed");
-      }
 
       setIsBidModalOpen(false);
       resetBidForm();

@@ -1,3 +1,5 @@
+from typing import Optional
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 # pyrefly: ignore [missing-import]
@@ -92,6 +94,30 @@ async def get_counterparts(
     query = select(Organization).where(
         Organization.role.in_(allowed_roles),
         Organization.status != "suspended",
+    )
+    result = await db.execute(query)
+    return list(result.scalars().all())
+
+
+async def get_organization(
+    org_id: str,
+    db: AsyncSession,
+) -> Optional[Organization]:
+    """Get an organization by ID."""
+    query = select(Organization).where(Organization.id == org_id)
+    result = await db.execute(query)
+    return result.scalar_one_or_none()
+
+
+async def list_facilities(
+    organization_id: str,
+    db: AsyncSession,
+) -> list[Facility]:
+    """List all facilities registered under an organization."""
+    query = (
+        select(Facility)
+        .where(Facility.organization_id == organization_id)
+        .order_by(Facility.created_at.desc())
     )
     result = await db.execute(query)
     return list(result.scalars().all())

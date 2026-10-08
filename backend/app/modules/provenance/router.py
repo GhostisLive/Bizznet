@@ -71,3 +71,17 @@ async def audit_provenance_record(
             detail="Provenance record not found.",
         )
     return record
+
+
+@router.get("/confidence/{organization_id}")
+async def get_confidence_score(
+    organization_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the provenance confidence score for an organization."""
+    # Optionally, we can add authorization: only allow if the user is from that org or is an auditor?
+    # For simplicity, we'll allow any authenticated user to see any organization's score.
+    # In a real app, you might want to restrict this.
+    score = await service.compute_confidence_score(organization_id, db)
+    return {"organization_id": str(organization_id), "confidence_score": score}

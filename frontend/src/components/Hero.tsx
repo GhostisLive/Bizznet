@@ -70,20 +70,20 @@ export default function Hero() {
             </p>
 
             <div className="flex flex-wrap gap-3 pt-2">
-              <a
-                href="/dashboard?role=manufacturer"
-                className="inline-flex items-center gap-2 rounded-lg bg-[#2C2418] hover:bg-[#4E4433] px-6 py-3.5 font-semibold text-white text-sm transition-all shadow-sm"
-              >
-                Launch Manufacturer Workspace
-                <ArrowRight size={16} />
-              </a>
-              <a
-                href="#provenance"
-                className="inline-flex items-center gap-2 rounded-lg border border-[#E8E0D4] bg-white px-6 py-3.5 font-medium text-[#2C2418] text-sm transition-colors hover:bg-[#FAF8F5] shadow-xs"
-              >
-                See How It Works
-              </a>
-            </div>
+               <a
+                 href="/login"
+                 className="inline-flex items-center gap-2 rounded-lg bg-[#2C2418] hover:bg-[#4E4433] px-6 py-3.5 font-semibold text-white text-sm transition-all shadow-sm"
+               >
+                 Login
+                 <ArrowRight size={16} />
+               </a>
+               <a
+                 href="/signup"
+                 className="inline-flex items-center gap-2 rounded-lg border border-[#E8E0D4] bg-white px-6 py-3.5 font-medium text-[#2C2418] text-sm transition-colors hover:bg-[#FAF8F5] shadow-xs"
+               >
+                 Register
+               </a>
+             </div>
 
             <p className="font-mono text-xs text-[#A89B8A]">
               Serving 2,400+ businesses across 12 supply chain verticals

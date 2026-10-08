@@ -36,18 +36,18 @@ export default function Nav() {
         </ul>
 
         <div className="hidden md:flex items-center gap-3">
-          <a
-            href="/login"
-            className="font-sans font-medium text-sm text-[#5C5040] hover:text-[#2C2418] transition-colors px-4 py-2"
-          >
-            Sign In
-          </a>
-          <a
-            href="/dashboard?role=manufacturer"
-            className="inline-flex items-center gap-2 font-sans font-semibold text-sm bg-[#2C2418] hover:bg-[#4E4433] text-white rounded-lg px-5 py-2.5 transition-all shadow-xs"
-          >
-            View Dashboard
-          </a>
+           <a
+             href="/signup"
+             className="font-sans font-medium text-sm text-[#5C5040] hover:text-[#2C2418] transition-colors px-4 py-2"
+           >
+             Register
+           </a>
+           <a
+             href="/login"
+             className="inline-flex items-center gap-2 font-sans font-semibold text-sm bg-[#2C2418] hover:bg-[#4E4433] text-white rounded-lg px-5 py-2.5 transition-all shadow-xs"
+           >
+             Login
+           </a>
         </div>
 
         <button
@@ -75,13 +75,13 @@ export default function Nav() {
               {link}
             </a>
           ))}
-          <a
-            href="/dashboard?role=manufacturer"
-            onClick={() => setOpen(false)}
-            className="mt-2 inline-block text-center font-sans font-semibold text-sm bg-[#2C2418] text-white rounded-lg px-5 py-2.5 transition-all"
-          >
-            View Dashboard
-          </a>
+           <a
+             href="/login"
+             onClick={() => setOpen(false)}
+             className="mt-2 inline-block text-center font-sans font-semibold text-sm bg-[#2C2418] text-white rounded-lg px-5 py-2.5 transition-all"
+           >
+             Login
+           </a>
         </div>
       </div>
     </nav>

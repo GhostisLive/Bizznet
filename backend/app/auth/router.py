@@ -72,10 +72,12 @@ async def login(login_request: LoginRequest):
             refresh_token=session.refresh_token,
             user=user.__dict__ if user else {},
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Authentication failed: {str(e)}",
+            detail=f"Authentication failed: {type(e).__name__}: {e}",
         )
 
 
@@ -141,10 +143,12 @@ async def refresh_token(refresh_token: str):
             refresh_token=session.refresh_token,
             user=user.__dict__ if user else {},
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Token refresh failed: {str(e)}",
+            detail=f"Token refresh failed: {type(e).__name__}: {e}",
         )
 
 

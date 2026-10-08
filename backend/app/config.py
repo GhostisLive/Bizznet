@@ -56,6 +56,12 @@ class Settings(BaseSettings):
                 "DATABASE_URL is not set. Add it to backend/.env using the "
                 "Supabase Dashboard connection string (Settings -> Database)."
             )
+        if not self.SUPABASE_ANON_KEY:
+            raise ValueError(
+                "SUPABASE_ANON_KEY is not set. Add the Supabase project's "
+                "public anon key to backend/.env (Project Settings -> API -> "
+                "Project API keys)."
+            )
 
         placeholders = ("<", ">", "DB_PASSWORD", "YOUR_", "REPLACE_")
         if any(token in self.DATABASE_URL for token in placeholders):

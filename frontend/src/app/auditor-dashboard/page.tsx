@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Plus,
+  RefreshCw,
   X,
   Users,
 } from "lucide-react";
@@ -94,15 +95,28 @@ export default function AuditorDashboardPage() {
   const [audits, setAudits] = useState<AuditRequest[]>([]);
   const [pastAuditRecords, setPastAuditRecords] = useState<PastAudit[]>([]);
   const [overview, setOverview] = useState({ open_requests: 0, completed_audits: 0, active_certifications: 0 });
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [showCertificateModal, setShowCertificateModal] = useState(false);
   const [certificateForm, setCertificateForm] = useState({ company: "", type: "Company" as AuditType, score: "" });
 
   useEffect(() => {
     if (currentOrg.loading) return;
-    Promise.all([api.getAuditorOverview(), api.getAuditRequests(), api.getAuditLogs(), api.getCertifications()])
-      .then(([metrics, requests, logs, nextCertificates]) => {
-        setOverview(metrics);
-        setAudits(requests.map((item) => ({
+    setLoadError(null);
+    Promise.allSettled([
+      api.getAuditorOverview(),
+      api.getAuditRequests(),
+      api.getAuditLogs(),
+      api.getCertifications(),
+    ]).then(([metricsResult, requestsResult, logsResult, certificatesResult]) => {
+        const errors: string[] = [];
+        if (metricsResult.status === "fulfilled") {
+          setOverview(metricsResult.value);
+        } else {
+          errors.push("overview");
+        }
+        if (requestsResult.status === "fulfilled") {
+          setAudits(requestsResult.value.map((item) => ({
           id: item.id,
           company: item.company.name,
           type: typeName(item.audit_type),
@@ -112,8 +126,12 @@ export default function AuditorDashboardPage() {
           status: item.status === "in_progress" ? "In progress" : item.status === "completed" ? "Completed" : "Pending",
           initials: item.company.name.slice(0, 2).toUpperCase(),
           tone: "bg-[#E6EEF8] text-[#315A87]",
-        })));
-        setPastAuditRecords(logs.map((item) => ({
+          })));
+        } else {
+          errors.push("audit requests");
+        }
+        if (logsResult.status === "fulfilled") {
+          setPastAuditRecords(logsResult.value.map((item) => ({
           id: item.id,
           company: item.company.name,
           type: typeName(item.audit_type),
@@ -122,8 +140,12 @@ export default function AuditorDashboardPage() {
           findings: item.findings || "No findings recorded",
           contract: item.digital_contract_id || "Not attached",
           contractStatus: item.digital_contract_id ? "Attached" : "Not attached",
-        })));
-        setCertificates(nextCertificates.map((item) => ({
+          })));
+        } else {
+          errors.push("audit logs");
+        }
+        if (certificatesResult.status === "fulfilled") {
+          setCertificates(certificatesResult.value.map((item) => ({
           id: item.certificate_number,
           company: item.company.name,
           type: typeName(item.audit_type),
@@ -131,13 +153,20 @@ export default function AuditorDashboardPage() {
           expires: item.expires_at ? new Date(item.expires_at).toLocaleDateString() : "No expiry",
           status: item.status === "active" ? "Active" : "Expiring soon",
           score: item.score ?? 0,
-        })));
-      })
-      .catch(() => {
-        setAudits([]);
-        setPastAuditRecords([]);
-        setCertificates([]);
+          })));
+        } else {
+          errors.push("certificates");
+        }
+        if (errors.length > 0) {
+          setLoadError(`Unable to load ${errors.join(", ")}. Refresh and try again.`);
+        }
       });
+  }, [currentOrg.loading, refreshKey]);
+
+  useEffect(() => {
+    if (currentOrg.loading) return;
+    const interval = window.setInterval(() => setRefreshKey((value) => value + 1), 15000);
+    return () => window.clearInterval(interval);
   }, [currentOrg.loading]);
 
   const visibleAudits = useMemo(() => {
@@ -193,6 +222,11 @@ export default function AuditorDashboardPage() {
             </button>
           </div>
         </header>
+        {loadError && (
+          <div role="alert" className="rounded-xl border border-[#C44133]/25 bg-[#FDF0EE] px-4 py-3 text-sm font-semibold text-[#C44133]">
+            {loadError}
+          </div>
+        )}
 
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[
@@ -224,9 +258,18 @@ export default function AuditorDashboardPage() {
                 <h2 className="text-xl font-extrabold">Audit request queue</h2>
                 <p className="mt-1 text-xs font-medium text-[#8A7E6E]">Prioritized work across your assigned organizations</p>
               </div>
-              <Link href="/auditor-dashboard#logs" className="inline-flex items-center gap-1 text-xs font-mono font-bold text-[#6B5B3E] hover:text-[#2C2418]">
-                View all requests <ArrowUpRight size={14} />
-              </Link>
+              <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  onClick={() => setRefreshKey((value) => value + 1)}
+                  className="inline-flex items-center gap-1 text-xs font-mono font-bold text-[#6B5B3E] hover:text-[#2C2418]"
+                >
+                  <RefreshCw size={14} /> Refresh queue
+                </button>
+                <Link href="/auditor-dashboard#logs" className="inline-flex items-center gap-1 text-xs font-mono font-bold text-[#6B5B3E] hover:text-[#2C2418]">
+                  View all requests <ArrowUpRight size={14} />
+                </Link>
+              </div>
             </div>
             <div className="flex flex-col gap-3 border-b border-[#E8E0D4] bg-[#FCFAF7] p-4 md:flex-row">
               <div className="relative flex-1">

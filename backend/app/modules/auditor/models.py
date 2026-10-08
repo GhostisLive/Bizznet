@@ -99,6 +99,20 @@ class AuditRequestCreate(SQLModel):
     due_at: Optional[datetime] = None
 
 
+class CompanyAuditRequestCreate(SQLModel):
+    auditor_id: UUID
+    audit_type: Literal["company", "labour", "carbon"] = "company"
+    scope_note: Optional[str] = Field(default=None, max_length=5000)
+    due_at: Optional[datetime] = None
+
+
+class AuditorRead(SQLModel):
+    id: UUID
+    name: str
+    role: str
+    status: str
+
+
 class AuditRequestRead(SQLModel):
     id: UUID
     auditor_id: UUID

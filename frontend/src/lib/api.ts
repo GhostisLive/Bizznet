@@ -87,6 +87,13 @@ export interface AuditorCompany {
   status: string;
 }
 
+export interface Auditor {
+  id: string;
+  name: string;
+  role: string;
+  status: string;
+}
+
 export interface AuditRequest {
   id: string;
   auditor_id: string;
@@ -354,6 +361,18 @@ class ApiClient {
 
   async getAuditorCompanies(): Promise<AuditorCompany[]> {
     return this.request<AuditorCompany[]>('/auditor/companies');
+  }
+
+  async getAuditors(): Promise<Auditor[]> {
+    return this.request<Auditor[]>('/auditor/auditors');
+  }
+
+  async getCompanyAuditRequests(): Promise<AuditRequest[]> {
+    return this.request<AuditRequest[]>('/auditor/company-requests');
+  }
+
+  async requestCompanyAudit(input: { auditor_id: string; audit_type: AuditRequest['audit_type']; scope_note?: string; due_at?: string }): Promise<AuditRequest> {
+    return this.request('/auditor/company-requests', { method: 'POST', body: JSON.stringify(input) });
   }
 
   async getAuditorOverview(): Promise<{ open_requests: number; completed_audits: number; active_certifications: number; average_score: number | null }> {

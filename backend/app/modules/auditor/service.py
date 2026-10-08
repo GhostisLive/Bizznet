@@ -9,6 +9,8 @@ from app.modules.auditor.models import (
     AuditLog,
     AuditRequest,
     AuditRequestCreate,
+    CompanyAuditRequestCreate,
+    AuditorRead,
     AuditorCompanyRead,
     AuditorConversation,
     AuditorMessage,
@@ -39,6 +41,30 @@ async def list_companies(auditor_id: UUID, db: AsyncSession) -> list[AuditorComp
 async def get_company(company_id: UUID, db: AsyncSession) -> Organization | None:
     result = await db.execute(select(Organization).where(Organization.id == company_id))
     return result.scalar_one_or_none()
+
+
+async def list_auditors(db: AsyncSession) -> list[AuditorRead]:
+    result = await db.execute(
+        select(Organization)
+        .where(Organization.role == "auditor", Organization.status != "suspended")
+        .order_by(Organization.name)
+    )
+    return [
+        AuditorRead(id=item.id, name=item.name, role=item.role, status=item.status)
+        for item in result.scalars().all()
+    ]
+
+
+async def list_company_audit_requests(
+    company_id: UUID, db: AsyncSession
+) -> list[tuple[AuditRequest, Organization]]:
+    result = await db.execute(
+        select(AuditRequest, Organization)
+        .join(Organization, Organization.id == AuditRequest.company_id)
+        .where(AuditRequest.company_id == company_id)
+        .order_by(AuditRequest.requested_at.desc())
+    )
+    return list(result.all())
 
 
 async def get_or_create_conversation(auditor_id: UUID, company_id: UUID, db: AsyncSession) -> AuditorConversation:
@@ -142,6 +168,42 @@ async def create_audit_request(
     if not company or company.role in {"auditor", "admin"} or company.status == "suspended":
         raise ValueError("Registered company not found")
     request = AuditRequest(auditor_id=auditor_id, **data.model_dump())
+    db.add(request)
+    await db.commit()
+    await db.refresh(request)
+    return request
+
+
+async def create_company_audit_request(
+    company_id: UUID,
+    data: CompanyAuditRequestCreate,
+    db: AsyncSession,
+) -> AuditRequest:
+    company = await get_company(company_id, db)
+    auditor = await get_company(data.auditor_id, db)
+    if not company or company.role in {"auditor", "admin"} or company.status == "suspended":
+        raise ValueError("Registered company not found")
+    if not auditor or auditor.role != "auditor" or auditor.status == "suspended":
+        raise ValueError("Selected auditor is not available")
+
+    existing = await db.scalar(
+        select(AuditRequest).where(
+            AuditRequest.company_id == company_id,
+            AuditRequest.auditor_id == data.auditor_id,
+            AuditRequest.audit_type == data.audit_type,
+            AuditRequest.status.in_(["pending", "in_progress"]),
+        )
+    )
+    if existing:
+        return existing
+
+    request = AuditRequest(
+        company_id=company_id,
+        auditor_id=data.auditor_id,
+        audit_type=data.audit_type,
+        scope_note=data.scope_note,
+        due_at=data.due_at,
+    )
     db.add(request)
     await db.commit()
     await db.refresh(request)

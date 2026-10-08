@@ -13,7 +13,9 @@ import {
   FileText,
   DollarSign,
   TrendingUp,
-  Loader2
+  Loader2,
+  Plus,
+  X
 } from "lucide-react";
 
 interface ProvenanceRecord {
@@ -36,6 +38,14 @@ export default function CompanyAuditPage() {
   const { user, org, loading: authLoading } = useAuth();
   const [provenanceRecords, setProvenanceRecords] = useState<ProvenanceRecord[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  const [auditors, setAuditors] = useState<{ id: string; name: string }[]>([]);
+  const [auditRequests, setAuditRequests] = useState<Awaited<ReturnType<typeof api.getCompanyAuditRequests>>>([]);
+  const [showRequestForm, setShowRequestForm] = useState(false);
+  const [selectedAuditor, setSelectedAuditor] = useState("");
+  const [requestType, setRequestType] = useState<"company" | "labour" | "carbon">("company");
+  const [requestNote, setRequestNote] = useState("");
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const [requestSending, setRequestSending] = useState(false);
 
   useEffect(() => {
     if (authLoading || !org) return;
@@ -50,6 +60,15 @@ export default function CompanyAuditPage() {
       );
 
       setProvenanceRecords(companyData);
+      if (org?.role !== "auditor") {
+        const [availableAuditors, requests] = await Promise.all([
+          api.getAuditors(),
+          api.getCompanyAuditRequests(),
+        ]);
+        setAuditors(availableAuditors);
+        setAuditRequests(requests);
+        setSelectedAuditor((current) => current || availableAuditors[0]?.id || "");
+      }
       setDataLoading(false);
     }
 
@@ -119,11 +138,38 @@ export default function CompanyAuditPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            {org?.role !== "auditor" && (
+              <button
+                type="button"
+                onClick={() => { setRequestError(null); setShowRequestForm(true); }}
+                className="inline-flex items-center gap-2 rounded-xl bg-[#6B5B3E] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#564A32]"
+              >
+                <Plus size={16} /> Request an audit
+              </button>
+            )}
             <span className="inline-flex items-center gap-2 px-4 py-2 bg-[#EEF7F2] border border-[#2E7D5B]/30 rounded-xl text-xs font-mono font-bold text-[#2E7D5B]">
               <ShieldCheck size={16} />
               {orgStatus === "verified" ? "Verified Enterprise Node" : "Enterprise Node"}
             </span>
           </div>
+
+          {org?.role !== "auditor" && auditRequests.length > 0 && (
+            <section className="rounded-2xl border border-[#E8E0D4] bg-white p-6 shadow-sm">
+              <h2 className="text-xl font-extrabold">Audit requests</h2>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {auditRequests.map((request) => (
+                  <div key={request.id} className="rounded-xl border border-[#E8E0D4] bg-[#FAF8F5] p-4">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold capitalize">{request.audit_type} audit</span>
+                      <span className="rounded-full bg-[#F5F0E8] px-3 py-1 text-xs font-bold capitalize text-[#6B5B3E]">{request.status.replace("_", " ")}</span>
+                    </div>
+                    <p className="mt-2 text-xs text-[#8A7E6E]">Submitted {new Date(request.requested_at).toLocaleDateString()}</p>
+                    {request.scope_note && <p className="mt-2 text-sm text-[#5C5040]">{request.scope_note}</p>}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -275,6 +321,46 @@ export default function CompanyAuditPage() {
           </div>
         </div>
       </main>
+      {showRequestForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#2C2418]/45 p-5">
+          <div role="dialog" aria-modal="true" className="w-full max-w-lg rounded-2xl border border-[#E8E0D4] bg-[#FFFDF9] p-6 shadow-2xl">
+            <div className="flex items-start justify-between">
+              <div><h2 className="text-xl font-extrabold">Request an audit</h2><p className="mt-1 text-xs text-[#8A7E6E]">Choose an auditor to review your company.</p></div>
+              <button type="button" onClick={() => setShowRequestForm(false)} aria-label="Close audit request form" className="rounded-lg p-2 text-[#8A7E6E] hover:bg-[#F5F0E8]"><X size={18} /></button>
+            </div>
+            <form className="mt-5 space-y-4" onSubmit={async (event) => {
+              event.preventDefault();
+              setRequestError(null);
+              setRequestSending(true);
+              try {
+                const created = await api.requestCompanyAudit({ auditor_id: selectedAuditor, audit_type: requestType, scope_note: requestNote || undefined });
+                setAuditRequests((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+                setShowRequestForm(false);
+                setRequestNote("");
+              } catch (error) {
+                setRequestError(error instanceof Error ? error.message : "The audit request could not be submitted.");
+              } finally {
+                setRequestSending(false);
+              }
+            }}>
+              <label className="block text-xs font-mono font-bold uppercase tracking-wide text-[#6B5B3E]">Auditor
+                <select required value={selectedAuditor} onChange={(event) => setSelectedAuditor(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-[#E8E0D4] bg-white px-3 text-sm">
+                  <option value="">Select an auditor</option>
+                  {auditors.map((auditor) => <option key={auditor.id} value={auditor.id}>{auditor.name}</option>)}
+                </select>
+              </label>
+              <label className="block text-xs font-mono font-bold uppercase tracking-wide text-[#6B5B3E]">Audit type
+                <select value={requestType} onChange={(event) => setRequestType(event.target.value as typeof requestType)} className="mt-2 h-11 w-full rounded-xl border border-[#E8E0D4] bg-white px-3 text-sm"><option value="company">Company</option><option value="labour">Labour</option><option value="carbon">Carbon</option></select>
+              </label>
+              <label className="block text-xs font-mono font-bold uppercase tracking-wide text-[#6B5B3E]">Scope note
+                <textarea value={requestNote} onChange={(event) => setRequestNote(event.target.value)} rows={4} maxLength={5000} placeholder="Describe the records or areas to review..." className="mt-2 w-full rounded-xl border border-[#E8E0D4] bg-white p-3 text-sm" />
+              </label>
+              {requestError && <p className="text-sm font-semibold text-red-700">{requestError}</p>}
+              <div className="flex justify-end gap-3"><button type="button" onClick={() => setShowRequestForm(false)} className="rounded-xl border border-[#E8E0D4] px-4 py-2.5 text-xs font-bold text-[#5C5040]">Cancel</button><button disabled={requestSending || !selectedAuditor} type="submit" className="rounded-xl bg-[#6B5B3E] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">{requestSending ? "Sending..." : "Send request"}</button></div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

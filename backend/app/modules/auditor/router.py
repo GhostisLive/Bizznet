@@ -8,6 +8,8 @@ from app.dependencies import get_current_user, require_role
 from app.modules.auditor import service
 from app.modules.auditor.models import (
     AuditRequestCreate,
+    CompanyAuditRequestCreate,
+    AuditorRead,
     AuditRequestRead,
     AuditLogRead,
     AuditorCompanyRead,
@@ -24,6 +26,51 @@ auditor_user = require_role(["auditor"])
 @router.get("/companies", response_model=list[AuditorCompanyRead])
 async def companies(current_user: CurrentUser = Depends(auditor_user), db: AsyncSession = Depends(get_db)):
     return await service.list_companies(current_user.organization_id, db)
+
+
+@router.get("/auditors", response_model=list[AuditorRead])
+async def auditors(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lists available auditors for companies requesting an audit."""
+    if current_user.role in {"auditor", "admin"}:
+        raise HTTPException(status_code=403, detail="Only companies can request an audit")
+    return await service.list_auditors(db)
+
+
+@router.post("/company-requests", response_model=AuditRequestRead)
+async def company_request_audit(
+    data: CompanyAuditRequestCreate,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Creates an audit request from a company to a selected auditor."""
+    if current_user.role in {"auditor", "admin"}:
+        raise HTTPException(status_code=403, detail="Only companies can request an audit")
+    try:
+        request = await service.create_company_audit_request(
+            current_user.organization_id, data, db
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    company = await service.get_company(request.company_id, db)
+    return AuditRequestRead(**request.model_dump(), company=service._company(company))
+
+
+@router.get("/company-requests", response_model=list[AuditRequestRead])
+async def company_audit_requests(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role in {"auditor", "admin"}:
+        raise HTTPException(status_code=403, detail="Only companies can view company audit requests")
+    return [
+        AuditRequestRead(**request.model_dump(), company=service._company(company))
+        for request, company in await service.list_company_audit_requests(
+            current_user.organization_id, db
+        )
+    ]
 
 
 @router.get("/overview")

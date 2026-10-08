@@ -31,10 +31,6 @@ export default function LoginPage() {
        // In a more complete implementation, we might extract role/org from the user object
        router.push("/dashboard");
        
-       // Note: broadcastSessionRefresh is no longer needed since we're not using Supabase auth state
-       // but we'll keep the function call for compatibility if it's used elsewhere
-       // broadcastSessionRefresh();
-
      } catch (err: any) {
        console.error("Login error:", err);
        setErrorMsg(err.message || "Invalid authentication credentials.");

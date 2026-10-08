@@ -22,6 +22,7 @@ import {
   ExternalLink,
   Sparkles
 } from "lucide-react";
+import Logo from "@/components/Logo";
 
 export interface Transaction {
   id: string;
@@ -662,8 +663,8 @@ function TransactionsContent() {
                   <div className="flex justify-between items-start border-b border-[#4E4433] pb-4">
                     <div>
                       <div className="flex items-center gap-2">
-                        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#6B5B3E] text-white">
-                          <ShieldCheck size={16} />
+                        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#EFE9DF] shadow-xs">
+                          <Logo size={16} />
                         </div>
                         <span className="font-bold text-lg text-white">Bizz<span className="text-[#7D6B4D]">Net</span> Bill</span>
                       </div>

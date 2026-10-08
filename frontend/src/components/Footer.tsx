@@ -1,4 +1,4 @@
-import { ShieldCheck } from "lucide-react";
+import Logo from "@/components/Logo";
 
 export default function Footer() {
   const columns = [
@@ -29,8 +29,8 @@ export default function Footer() {
               href="/"
               className="flex items-center gap-2.5 font-sans text-lg font-bold text-[#2C2418]"
             >
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#6B5B3E] text-white shadow-xs">
-                <ShieldCheck size={16} />
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#EFE9DF] shadow-xs ring-1 ring-[#E8E0D4]">
+                <Logo size={16} />
               </div>
               <span>Bizz<span className="text-[#6B5B3E]">Net</span></span>
             </a>

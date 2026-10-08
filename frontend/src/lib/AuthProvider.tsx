@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
-import { api } from "@/lib/api";
+import { api, isAuthError } from "@/lib/api";
 interface User { id: string; email: string; aud: string; email_confirmed_at?: string; phone?: string; phone_confirmed_at?: string; confirmed_at?: string; last_sign_in_at?: string; app_metadata: Record<string, unknown>; user_metadata: Record<string, unknown>; created_at: string; updated_at: string; is_anonymous: boolean; }
 
 export interface OrgProfile {
@@ -40,6 +40,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const loadSession = useCallback(async () => {
+    if (!api.hasSession()) {
+      setUser(null);
+      setOrg(null);
+      setLoading(false);
+      return;
+    }
+
     try {
       const userData = await api.getCurrentUserInfo();
 
@@ -72,10 +79,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         updated_at: orgData.updated_at,
       });
     } catch (error) {
-      console.warn("Failed to load session:", error);
+      if (isAuthError(error)) {
+        // Session is dead (refresh failed or no refresh token): sign out silently.
+        api.setToken("");
+      } else {
+        // Transient/network error: keep the stored tokens and retry next load.
+        console.warn("Failed to load session:", error);
+      }
       setUser(null);
       setOrg(null);
-      api.setToken("");
     } finally {
       setLoading(false);
     }

@@ -1,5 +1,28 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1';
 const TOKEN_KEY = 'bizznet_access_token';
+const REFRESH_KEY = 'bizznet_refresh_token';
+
+/** Endpoints that must never trigger a token refresh (avoids recursion). */
+const NO_REFRESH_ENDPOINTS = ['/auth/login', '/auth/signup', '/auth/refresh'];
+
+export class AuthError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'AuthError';
+    this.status = status;
+  }
+}
+
+/** Duck-typed so it works even if the module is instantiated twice. */
+export function isAuthError(error: unknown): error is AuthError {
+  return (
+    error instanceof Error &&
+    (error.name === 'AuthError' ||
+      (typeof (error as AuthError).status === 'number' &&
+        (error as AuthError).status === 401))
+  );
+}
 
 export interface MarketplaceListing {
   id: string;
@@ -71,11 +94,15 @@ export interface NegotiationBid {
 class ApiClient {
   private baseUrl: string;
   private token: string | null = null;
+  private refreshTokenValue: string | null = null;
+  private refreshPromise: Promise<boolean> | null = null;
+  private lastRefreshAttempt = 0;
 
   constructor(baseUrl: string = API_BASE) {
     this.baseUrl = baseUrl;
     if (typeof window !== "undefined") {
       this.token = localStorage.getItem(TOKEN_KEY);
+      this.refreshTokenValue = localStorage.getItem(REFRESH_KEY);
     }
   }
 
@@ -86,6 +113,19 @@ class ApiClient {
         localStorage.setItem(TOKEN_KEY, token);
       } else {
         localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(REFRESH_KEY);
+        this.refreshTokenValue = null;
+      }
+    }
+  }
+
+  setRefreshToken(token: string) {
+    this.refreshTokenValue = token || null;
+    if (typeof window !== "undefined") {
+      if (token) {
+        localStorage.setItem(REFRESH_KEY, token);
+      } else {
+        localStorage.removeItem(REFRESH_KEY);
       }
     }
   }
@@ -94,24 +134,89 @@ class ApiClient {
     return this.token;
   }
 
-  async request<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    };
+  hasSession(): boolean {
+    return Boolean(this.token || this.refreshTokenValue);
+  }
 
+  /** Exchange the stored refresh token for a fresh access token (single-flight). */
+  private async refreshTokens(): Promise<boolean> {
+    if (!this.refreshTokenValue) return false;
+    // Cooldown after a failed refresh so a dead backend isn't hammered.
+    if (Date.now() - this.lastRefreshAttempt < 5000 && !this.refreshPromise) {
+      return false;
+    }
+    if (!this.refreshPromise) {
+      const refresh = async () => {
+        this.lastRefreshAttempt = Date.now();
+        try {
+          const res = await fetch(
+            `${this.baseUrl}/auth/refresh?refresh_token=${encodeURIComponent(this.refreshTokenValue!)}`,
+            { method: 'POST', headers: { 'Content-Type': 'application/json' } },
+          );
+          if (!res.ok) return false;
+          const data = await res.json();
+          if (!data?.access_token) return false;
+          this.token = data.access_token;
+          if (typeof window !== "undefined") {
+            localStorage.setItem(TOKEN_KEY, data.access_token);
+          }
+          if (data.refresh_token) this.setRefreshToken(data.refresh_token);
+          return true;
+        } catch {
+          return false;
+        } finally {
+          this.refreshPromise = null;
+        }
+      };
+      this.refreshPromise = refresh();
+    }
+    return this.refreshPromise;
+  }
+
+  private buildHeaders(options: RequestInit): HeadersInit {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...((options.headers as Record<string, string>) || {}),
+    };
     if (this.token) {
-      (headers as Record<string, string>)['Authorization'] = `Bearer ${this.token}`;
+      headers['Authorization'] = `Bearer ${this.token}`;
+    }
+    return headers;
+  }
+
+  async request<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    const canRefresh =
+      !NO_REFRESH_ENDPOINTS.some((e) => endpoint.startsWith(e)) &&
+      Boolean(this.refreshTokenValue);
+
+    // Refresh token but no access token: mint one before the first call so the
+    // request never goes out unauthenticated (FastAPI answers 401 "Not authenticated").
+    if (!this.token && canRefresh) {
+      await this.refreshTokens();
     }
 
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+    let response = await fetch(`${this.baseUrl}${endpoint}`, {
       ...options,
-      headers,
+      headers: this.buildHeaders(options),
     });
+
+    // Expired access token: refresh once, then retry the original request.
+    if (response.status === 401 && canRefresh && (await this.refreshTokens())) {
+      response = await fetch(`${this.baseUrl}${endpoint}`, {
+        ...options,
+        headers: this.buildHeaders(options),
+      });
+    }
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-      throw new Error(error.detail || `HTTP ${response.status}`);
+      const message = error.detail || `HTTP ${response.status}`;
+      if (response.status === 401) {
+        // Refresh failed or no refresh token: the session is gone.
+        this.setToken('');
+        throw new AuthError(message, 401);
+      }
+      throw new Error(message);
     }
 
     return response.json();
@@ -119,17 +224,21 @@ class ApiClient {
 
   // Auth
   async login(email: string, password: string): Promise<{ access_token: string; refresh_token: string; user: any }> {
-    return this.request<{ access_token: string; refresh_token: string; user: any }>('/auth/login', {
+    const data = await this.request<{ access_token: string; refresh_token: string; user: any }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
+    if (data.refresh_token) this.setRefreshToken(data.refresh_token);
+    return data;
   }
 
   async signup(email: string, password: string, role: string = "manufacturer"): Promise<{ access_token: string; refresh_token: string; user: any }> {
-    return this.request<{ access_token: string; refresh_token: string; user: any }>('/auth/signup', {
+    const data = await this.request<{ access_token: string; refresh_token: string; user: any }>('/auth/signup', {
       method: 'POST',
       body: JSON.stringify({ email, password, role }),
     });
+    if (data.refresh_token) this.setRefreshToken(data.refresh_token);
+    return data;
   }
 
   async getCurrentUserInfo(): Promise<{ id: string; email: string; role: string; organization_id: string }> {

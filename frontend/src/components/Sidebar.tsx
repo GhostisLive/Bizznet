@@ -12,13 +12,13 @@ import {
   Building2,
   Leaf,
   User,
-  ShieldCheck,
   Menu,
   X,
   RefreshCw,
   Receipt,
   MessageSquare
 } from "lucide-react";
+import Logo from "@/components/Logo";
 
 interface SidebarProps {
   currentRole?: string;
@@ -52,8 +52,8 @@ export default function Sidebar({
       {/* Mobile Top Navigation Header with Menu Toggle */}
       <div className="lg:hidden bg-[#2C2418] text-white px-6 py-4 flex items-center justify-between sticky top-0 z-50 border-b border-[#4E4433]">
         <Link href="/dashboard" className="flex items-center gap-2.5 font-sans font-bold text-xl">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#6B5B3E] text-white">
-            <ShieldCheck size={20} />
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#EFE9DF] shadow-xs">
+            <Logo size={20} />
           </div>
           <span>Bizz<span className="text-[#7D6B4D]">Net</span></span>
         </Link>
@@ -106,8 +106,8 @@ export default function Sidebar({
           
           {/* Brand Header */}
           <Link href="/dashboard" className="flex items-center gap-3 pb-6 border-b border-[#4E4433] group">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#6B5B3E] text-white shadow-md group-hover:scale-105 transition-transform">
-              <ShieldCheck size={24} />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EFE9DF] shadow-md group-hover:scale-105 transition-transform">
+              <Logo size={26} />
             </div>
             <div>
               <h1 className="font-extrabold text-2xl text-white tracking-tight leading-none">

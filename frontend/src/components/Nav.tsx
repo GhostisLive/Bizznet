@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Menu, X, ShieldCheck } from "lucide-react";
+import { Menu, X } from "lucide-react";
+import Logo from "@/components/Logo";
 
 const links = ["Platform", "Provenance", "Network", "Pricing"] as const;
 
@@ -15,8 +16,8 @@ export default function Nav() {
     >
       <div className="mx-auto max-w-7xl flex items-center justify-between px-6 h-16">
         <a href="/" className="flex items-center gap-2.5 font-sans font-bold text-xl tracking-tight text-[#2C2418]">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#6B5B3E] text-white shadow-xs">
-            <ShieldCheck size={18} />
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#EFE9DF] shadow-xs ring-1 ring-[#E8E0D4]">
+            <Logo size={18} />
           </div>
           <span>Bizz<span className="text-[#6B5B3E]">Net</span></span>
         </a>

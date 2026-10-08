@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
 
@@ -46,7 +48,9 @@ class Settings(BaseSettings):
     )
 
     class Config:
-        env_file = ".env"
+        # Resolve the environment file from the backend package, not the
+        # process working directory (which may be the repository root).
+        env_file = Path(__file__).resolve().parents[1] / ".env"
         case_sensitive = True
 
     @model_validator(mode="after")
@@ -61,6 +65,15 @@ class Settings(BaseSettings):
                 "SUPABASE_ANON_KEY is not set. Add the Supabase project's "
                 "public anon key to backend/.env (Project Settings -> API -> "
                 "Project API keys)."
+            )
+        if not self.OLLAMA_CLOUD_API_KEY:
+            raise ValueError(
+                "OLLAMA_CLOUD_API_KEY is not set. Add the Ollama Cloud API key "
+                "to backend/.env."
+            )
+        if not self.OLLAMA_CLOUD_URL.startswith(("http://", "https://")):
+            raise ValueError(
+                "OLLAMA_CLOUD_URL must be an absolute HTTP(S) URL."
             )
 
         placeholders = ("<", ">", "DB_PASSWORD", "YOUR_", "REPLACE_")

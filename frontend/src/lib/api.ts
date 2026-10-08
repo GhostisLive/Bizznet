@@ -80,6 +80,59 @@ export interface Negotiation {
   created_at: string;
 }
 
+export interface AuditorCompany {
+  id: string;
+  name: string;
+  role: string;
+  status: string;
+}
+
+export interface AuditRequest {
+  id: string;
+  auditor_id: string;
+  company_id: string;
+  company: AuditorCompany;
+  audit_type: 'company' | 'labour' | 'carbon';
+  status: string;
+  scope_note: string | null;
+  requested_at: string;
+  due_at: string | null;
+}
+
+export interface AuditLog {
+  id: string;
+  request_id: string | null;
+  company_id: string;
+  company: AuditorCompany;
+  audit_type: 'company' | 'labour' | 'carbon';
+  score: number | null;
+  findings: string | null;
+  recommendations: string | null;
+  completed_at: string | null;
+  digital_contract_id: string | null;
+}
+
+export interface Certification {
+  id: string;
+  auditor_id: string;
+  company_id: string;
+  company: AuditorCompany;
+  audit_type: 'company' | 'labour' | 'carbon';
+  certificate_number: string;
+  score: number | null;
+  issued_at: string;
+  expires_at: string | null;
+  status: string;
+}
+
+export interface AuditorMessage {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  content: string;
+  created_at: string;
+}
+
 export interface NegotiationBid {
   id: string;
   negotiation_id: string;
@@ -222,6 +275,18 @@ class ApiClient {
     return response.json();
   }
 
+  async downloadAgreementPdf(negotiationId: string): Promise<Blob> {
+    const endpoint = `/negotiation/${negotiationId}/document/pdf`;
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      headers: this.buildHeaders({}),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
+      throw new Error(error.detail || `HTTP ${response.status}`);
+    }
+    return response.blob();
+  }
+
   // Auth
   async login(email: string, password: string): Promise<{ access_token: string; refresh_token: string; user: any }> {
     const data = await this.request<{ access_token: string; refresh_token: string; user: any }>('/auth/login', {
@@ -285,6 +350,45 @@ class ApiClient {
   // Negotiations
   async getNegotiations(): Promise<Negotiation[]> {
     return this.request<Negotiation[]>('/negotiation/negotiations');
+  }
+
+  async getAuditorCompanies(): Promise<AuditorCompany[]> {
+    return this.request<AuditorCompany[]>('/auditor/companies');
+  }
+
+  async getAuditorOverview(): Promise<{ open_requests: number; completed_audits: number; active_certifications: number; average_score: number | null }> {
+    return this.request('/auditor/overview');
+  }
+
+  async getAuditRequests(): Promise<AuditRequest[]> {
+    return this.request('/auditor/audit-requests');
+  }
+
+  async getAuditLogs(): Promise<AuditLog[]> {
+    return this.request('/auditor/audit-logs');
+  }
+
+  async getCertifications(): Promise<Certification[]> {
+    return this.request('/auditor/certifications');
+  }
+
+  async createCertification(input: { company_id: string; audit_type: Certification['audit_type']; score?: number; expires_at?: string }): Promise<Certification> {
+    return this.request('/auditor/certifications', { method: 'POST', body: JSON.stringify(input) });
+  }
+
+  async createAuditRequest(input: { company_id: string; audit_type: AuditRequest['audit_type']; scope_note?: string; due_at?: string }): Promise<AuditRequest> {
+    return this.request('/auditor/audit-requests', { method: 'POST', body: JSON.stringify(input) });
+  }
+
+  async getAuditorMessages(companyId: string): Promise<AuditorMessage[]> {
+    return this.request(`/auditor/conversations/${companyId}/messages`);
+  }
+
+  async sendAuditorMessage(companyId: string, content: string): Promise<AuditorMessage> {
+    return this.request(`/auditor/conversations/${companyId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
   }
 }
 

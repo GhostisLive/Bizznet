@@ -1,9 +1,16 @@
 """Agreement document generation for accepted negotiations."""
 
 from datetime import datetime, timezone
+from html import escape
+from io import BytesIO
+import re
 from typing import Any
 
 import httpx
+from reportlab.lib.pagesizes import LETTER
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 from app.config import settings
 
@@ -98,6 +105,48 @@ a short note that legal review is required. This is a term sheet until signed.""
             return content.strip(), "ollama", None
     except (httpx.HTTPError, ValueError) as exc:
         return fallback, "template", f"Ollama generation failed: {exc}"
+
+
+def agreement_pdf(content: str) -> bytes:
+    """Render generated agreement text as a downloadable PDF."""
+    buffer = BytesIO()
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=LETTER,
+        rightMargin=0.75 * inch,
+        leftMargin=0.75 * inch,
+        topMargin=0.7 * inch,
+        bottomMargin=0.7 * inch,
+        title="BizzNet Commercial Agreement",
+    )
+    styles = getSampleStyleSheet()
+    heading = ParagraphStyle(
+        "AgreementHeading",
+        parent=styles["Heading2"],
+        spaceBefore=10,
+        spaceAfter=5,
+    )
+    body = ParagraphStyle(
+        "AgreementBody",
+        parent=styles["BodyText"],
+        leading=14,
+        spaceAfter=6,
+    )
+    story = []
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line:
+            story.append(Spacer(1, 5))
+            continue
+        is_heading = line.startswith("#")
+        text = re.sub(r"^#+\s*", "", line)
+        text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
+        text = re.sub(r"\*(.+?)\*", r"<i>\1</i>", text)
+        text = re.sub(r"^[-*]\s+", "• ", text)
+        style = heading if is_heading else body
+        story.append(Paragraph(escape(text, quote=False).replace("&lt;b&gt;", "<b>").replace("&lt;/b&gt;", "</b>").replace("&lt;i&gt;", "<i>").replace("&lt;/i&gt;", "</i>"), style))
+    document.build(story)
+    return buffer.getvalue()
 
 
 def utc_document_date() -> str:

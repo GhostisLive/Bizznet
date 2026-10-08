@@ -762,13 +762,20 @@ export default function NegotiationsPage() {
                             : "verified template"}
                         </p>
                       </div>
-                      <a
-                        href={`data:text/markdown;charset=utf-8,${encodeURIComponent(activeNeg.document.content_markdown)}`}
-                        download={`${activeNeg.document.document_number}.md`}
+                      <button
+                        onClick={async () => {
+                          const blob = await api.downloadAgreementPdf(activeNeg.document!.negotiation_id);
+                          const url = URL.createObjectURL(blob);
+                          const link = document.createElement("a");
+                          link.href = url;
+                          link.download = `${activeNeg.document!.document_number}.pdf`;
+                          link.click();
+                          URL.revokeObjectURL(url);
+                        }}
                         className="inline-flex items-center justify-center rounded-lg bg-[#2E7D5B] px-3 py-2 text-xs font-bold text-white hover:bg-[#247A53]"
                       >
                         Download agreement
-                      </a>
+                      </button>
                     </div>
                     {activeNeg.document.generation_error && (
                       <p className="mt-3 text-xs font-semibold text-[#8A5A17]">

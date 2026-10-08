@@ -1,4 +1,7 @@
+from io import BytesIO
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List
@@ -99,6 +102,29 @@ async def get_negotiation_document(
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement document not generated")
     return document
+
+
+@router.get("/{negotiation_id}/document/pdf")
+async def download_negotiation_document_pdf(
+    negotiation_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Downloads the latest agreement as a PDF for a negotiation participant."""
+    negotiation = await service.get_negotiation_detail(negotiation_id, db)
+    if not negotiation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Negotiation not found")
+    if current_user.organization_id not in (negotiation.buyer_id, negotiation.seller_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a participant in this negotiation")
+    document = await service.get_negotiation_document(negotiation_id, db)
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement document not generated")
+    filename = f"{document.document_number}.pdf"
+    return StreamingResponse(
+        BytesIO(service.agreement_pdf(document.content_markdown)),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/{negotiation_id}/review-trace", response_model=NegotiationRead)

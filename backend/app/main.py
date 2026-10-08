@@ -14,6 +14,7 @@ from app.modules.negotiation.models import Negotiation, NegotiationBid, Negotiat
 from app.modules.rfq.models import RFQ, RFQBid  # noqa: F401
 from app.modules.orders.models import Order, OrderStatusHistory, OrderDocument  # noqa: F401
 from app.modules.products.models import Product  # noqa: F401
+from app.modules.auditor.models import AuditorConversation, AuditorMessage, AuditRequest, AuditLog, Certification  # noqa: F401
 
 # Import routers
 from app.modules.network.router import router as network_router
@@ -25,6 +26,7 @@ from app.modules.orders.router import router as orders_router
 from app.modules.products.router import router as products_router
 from app.modules.dashboard.router import router as dashboard_router
 from app.auth.router import router as auth_router
+from app.modules.auditor.router import router as auditor_router
 
 
 @asynccontextmanager
@@ -62,6 +64,7 @@ app.include_router(orders_router, prefix=settings.API_V1_STR)
 app.include_router(products_router, prefix=settings.API_V1_STR)
 app.include_router(dashboard_router, prefix=settings.API_V1_STR)
 app.include_router(auth_router, prefix=settings.API_V1_STR + "/auth")
+app.include_router(auditor_router, prefix=settings.API_V1_STR)
 
 
 @app.get("/health", tags=["Health"])

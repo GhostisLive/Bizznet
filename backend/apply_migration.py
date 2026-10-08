@@ -4,6 +4,7 @@ Apply database migration for RFQ and Orders tables.
 """
 
 import asyncio
+import os
 import sys
 from sqlalchemy import text
 from app.database import engine
@@ -12,7 +13,10 @@ async def apply_migration():
     print("Applying migration: Add RFQ and Orders tables...")
     
     try:
-        migration_file = "migrations/003_add_rfq_and_orders.sql"
+        migration_file = os.getenv(
+            "MIGRATION_FILE",
+            "migrations/003_add_rfq_and_orders.sql",
+        )
         
         with open(migration_file, 'r') as f:
             migration_sql = f.read()

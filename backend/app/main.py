@@ -10,7 +10,7 @@ from app.database import init_db
 from app.modules.network.models import Organization, Facility  # noqa: F401
 from app.modules.marketplace.models import Listing  # noqa: F401
 from app.modules.provenance.models import ProvenanceRecord, ListingProvenanceSnapshot  # noqa: F401
-from app.modules.negotiation.models import Negotiation, NegotiationBid  # noqa: F401
+from app.modules.negotiation.models import Negotiation, NegotiationBid, NegotiationDocument  # noqa: F401
 from app.modules.rfq.models import RFQ, RFQBid  # noqa: F401
 from app.modules.orders.models import Order, OrderStatusHistory, OrderDocument  # noqa: F401
 from app.modules.products.models import Product  # noqa: F401
@@ -24,6 +24,7 @@ from app.modules.rfq.router import router as rfq_router
 from app.modules.orders.router import router as orders_router
 from app.modules.products.router import router as products_router
 from app.modules.dashboard.router import router as dashboard_router
+from app.auth.router import router as auth_router
 
 
 @asynccontextmanager
@@ -60,6 +61,7 @@ app.include_router(rfq_router, prefix=settings.API_V1_STR)
 app.include_router(orders_router, prefix=settings.API_V1_STR)
 app.include_router(products_router, prefix=settings.API_V1_STR)
 app.include_router(dashboard_router, prefix=settings.API_V1_STR)
+app.include_router(auth_router, prefix=settings.API_V1_STR + "/auth")
 
 
 @app.get("/health", tags=["Health"])

@@ -3,6 +3,7 @@ from sqlalchemy.future import select
 from sqlalchemy import or_
 from uuid import UUID
 from datetime import datetime, timezone
+from sqlalchemy import desc
 
 from app.modules.negotiation.models import (
     Negotiation,
@@ -12,10 +13,13 @@ from app.modules.negotiation.models import (
     NegotiationCreate,
     BidCreate,
     NegotiationMessageCreate,
+    NegotiationDocument,
 )
 from app.modules.marketplace.models import Listing
 from app.modules.network.models import Organization
 from app.modules.network.service import MARKETPLACE_SELLER_ROLES, normalize_role
+from app.modules.negotiation.document_service import generate_agreement, utc_document_date
+from app.config import settings
 
 
 async def initiate_negotiation(
@@ -82,6 +86,131 @@ async def submit_bid(
     await db.commit()
     await db.refresh(bid)
     return bid
+
+
+async def get_negotiation_detail(
+    negotiation_id: UUID,
+    db: AsyncSession,
+) -> Negotiation | None:
+    result = await db.execute(
+        select(Negotiation).where(Negotiation.id == negotiation_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_latest_bid(
+    negotiation_id: UUID,
+    sender_id: UUID,
+    db: AsyncSession,
+) -> NegotiationBid | None:
+    result = await db.execute(
+        select(NegotiationBid)
+        .where(
+            NegotiationBid.negotiation_id == negotiation_id,
+            NegotiationBid.sender_id == sender_id,
+        )
+        .order_by(desc(NegotiationBid.created_at))
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_negotiation_document(
+    negotiation_id: UUID,
+    db: AsyncSession,
+) -> NegotiationDocument | None:
+    result = await db.execute(
+        select(NegotiationDocument)
+        .where(NegotiationDocument.negotiation_id == negotiation_id)
+        .order_by(desc(NegotiationDocument.created_at))
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def accept_offer(
+    negotiation_id: UUID,
+    accepting_org_id: UUID,
+    db: AsyncSession,
+) -> tuple[Negotiation, NegotiationDocument]:
+    """Accept the counterparty's latest terms and create an agreement record."""
+    neg = await get_negotiation_detail(negotiation_id, db)
+    if not neg:
+        raise ValueError("Negotiation not found")
+    if accepting_org_id not in (neg.buyer_id, neg.seller_id):
+        raise ValueError("Not a participant in this negotiation")
+    if neg.status not in ("active", "countered", "agreed"):
+        raise ValueError(f"Cannot accept a negotiation with status: {neg.status}")
+    if neg.status == "agreed":
+        existing_document = await get_negotiation_document(negotiation_id, db)
+        if existing_document:
+            return neg, existing_document
+
+    listing_result = await db.execute(select(Listing).where(Listing.id == neg.listing_id))
+    listing = listing_result.scalar_one_or_none()
+    if not listing:
+        raise ValueError("Listing not found")
+
+    buyer_result = await db.execute(select(Organization).where(Organization.id == neg.buyer_id))
+    seller_result = await db.execute(select(Organization).where(Organization.id == neg.seller_id))
+    buyer = buyer_result.scalar_one_or_none()
+    seller = seller_result.scalar_one_or_none()
+    if not buyer or not seller:
+        raise ValueError("Negotiation parties could not be resolved")
+
+    if accepting_org_id == neg.seller_id:
+        accepted_bid = await get_latest_bid(negotiation_id, neg.buyer_id, db)
+        if not accepted_bid:
+            raise ValueError("There is no buyer offer to accept")
+    else:
+        accepted_bid = await get_latest_bid(negotiation_id, neg.seller_id, db)
+
+    accepted_price = accepted_bid.price if accepted_bid else listing.price
+    accepted_moq = accepted_bid.moq if accepted_bid else listing.moq
+    accepted_terms = accepted_bid.terms if accepted_bid else None
+    document_number = f"BZN-{datetime.now(timezone.utc):%Y%m%d}-{str(negotiation_id)[:8].upper()}"
+
+    neg.status = "agreed"
+    neg.accepted_price = accepted_price
+    neg.accepted_moq = accepted_moq
+    neg.accepted_by = accepting_org_id
+    neg.accepted_at = datetime.now(timezone.utc)
+    db.add(neg)
+    await db.commit()
+    await db.refresh(neg)
+
+    snapshot = {
+        "document_number": document_number,
+        "effective_date": utc_document_date(),
+        "buyer_name": buyer.name,
+        "buyer_role": buyer.role,
+        "seller_name": seller.name,
+        "seller_role": seller.role,
+        "product": listing.title,
+        "category": listing.category or "Not specified",
+        "moq": accepted_moq,
+        "unit": listing.unit,
+        "unit_price": accepted_price,
+        "estimated_value": accepted_price * accepted_moq,
+        "currency": listing.currency,
+        "provenance_requirement": accepted_bid.provenance_requirement if accepted_bid else "Not specified",
+        "additional_terms": accepted_terms or "To be confirmed in the purchase order",
+    }
+    content, source, generation_error = await generate_agreement(snapshot)
+    document = NegotiationDocument(
+        negotiation_id=neg.id,
+        document_number=document_number,
+        title=f"Commercial Agreement - {listing.title}",
+        content_markdown=content,
+        terms_snapshot=snapshot,
+        generation_source=source,
+        ai_model=settings.OLLAMA_MODEL if source == "ollama" else None,
+        generation_error=generation_error,
+    )
+    db.add(document)
+    await db.commit()
+    await db.refresh(document)
+    return neg, document
 
 
 async def mark_provenance_reviewed(
@@ -198,6 +327,10 @@ async def get_enriched_negotiations(
             "status": neg.status,
             "provenance_reviewed": neg.provenance_reviewed,
             "created_at": neg.created_at.isoformat(),
+            "accepted_price": neg.accepted_price,
+            "accepted_moq": neg.accepted_moq,
+            "accepted_by": str(neg.accepted_by) if neg.accepted_by else None,
+            "accepted_at": neg.accepted_at.isoformat() if neg.accepted_at else None,
             # Enriched fields
             "listing": {
                 "title": listing.title if listing else "Unknown",
@@ -224,10 +357,28 @@ async def get_enriched_negotiations(
                     "moq": b.moq,
                     "provenance_requirement": b.provenance_requirement,
                     "terms": b.terms,
+                    "created_at": b.created_at.isoformat(),
                     "timestamp": b.created_at.isoformat(),
                 }
                 for b in bids
             ],
+            "document": (
+                {
+                    "id": str(document.id),
+                    "negotiation_id": str(document.negotiation_id),
+                    "document_type": document.document_type,
+                    "document_number": document.document_number,
+                    "title": document.title,
+                    "content_markdown": document.content_markdown,
+                    "terms_snapshot": document.terms_snapshot,
+                    "generation_source": document.generation_source,
+                    "ai_model": document.ai_model,
+                    "generation_error": document.generation_error,
+                    "created_at": document.created_at.isoformat(),
+                }
+                if (document := await get_negotiation_document(neg.id, db))
+                else None
+            ),
         })
 
     return enriched

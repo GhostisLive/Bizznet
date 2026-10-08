@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, type ChangeEvent } from "react";
 import Sidebar from "@/components/Sidebar";
 import { useCurrentOrg } from "@/lib/useCurrentOrg";
 import { useAuth } from "@/lib/AuthProvider";
-import { supabase } from "@/utils/supabaseClient";
+import { api } from "@/lib/api";
 import {
   Handshake,
   ShieldCheck,
@@ -22,8 +22,6 @@ import {
 } from "lucide-react";
 import { formatTime } from "@/lib/formatTime";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
-
 interface Bid {
   id: string;
   negotiation_id: string;
@@ -33,6 +31,7 @@ interface Bid {
   provenance_requirement: string | null;
   terms: string | null;
   created_at: string;
+  timestamp?: string;
   type: "bid";
 }
 
@@ -62,6 +61,20 @@ interface OrgRef {
   role: string;
 }
 
+interface NegotiationDocument {
+  id: string;
+  negotiation_id: string;
+  document_type: string;
+  document_number: string;
+  title: string;
+  content_markdown: string;
+  terms_snapshot: Record<string, unknown>;
+  generation_source: "ollama" | "template";
+  ai_model: string | null;
+  generation_error: string | null;
+  created_at: string;
+}
+
 interface Negotiation {
   id: string;
   buyer_id: string;
@@ -74,6 +87,7 @@ interface Negotiation {
   buyer: OrgRef;
   seller: OrgRef;
   bids: Bid[];
+  document?: NegotiationDocument | null;
 }
 
 export default function NegotiationsPage() {
@@ -101,28 +115,23 @@ export default function NegotiationsPage() {
 
     async function fetchNegotiations() {
       setFetching(true);
-      const { data, error } = await supabase
-        .from("negotiations")
-        .select(
-          "*, listing:listings(title, category, price, unit, moq), buyer:organizations!negotiations_buyer_id_fkey(name, role), seller:organizations!negotiations_seller_id_fkey(name, role), bids:negotiation_bids(id, sender_id, price, moq, terms, created_at)"
-        )
-        .or(`buyer_id.eq.${org!.id},seller_id.eq.${org!.id}`);
-
-      if (!error && data) {
-        const sorted = (data as Negotiation[]).map((n) => ({
+      try {
+        const data = await api.request<Negotiation[]>("/negotiation/negotiations/enriched");
+        const sorted = data.map((n) => ({
           ...n,
-          bids: [...n.bids].sort(
-            (a, b) =>
-              new Date(a.created_at).getTime() -
-              new Date(b.created_at).getTime()
+          bids: [...n.bids].sort((a, b) =>
+            new Date(a.created_at || a.timestamp || 0).getTime() -
+            new Date(b.created_at || b.timestamp || 0).getTime()
           ),
         }));
         setNegotiations(sorted);
-        if (sorted.length > 0 && !activeNegId) {
-          setActiveNegId(sorted[0].id);
-        }
+        if (sorted.length > 0 && !activeNegId) setActiveNegId(sorted[0].id);
+      } catch (error) {
+        console.error("Failed to fetch negotiations:", error);
+        setNegotiations([]);
+      } finally {
+        setFetching(false);
       }
-      setFetching(false);
     }
 
     fetchNegotiations();
@@ -137,89 +146,53 @@ export default function NegotiationsPage() {
   }, [messages]);
 
   async function fetchMessages(negotiationId: string) {
-    if (!org) return;
-    setMessagesLoading(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (!token) throw new Error("Not authenticated");
-
-      const res = await fetch(`${API_BASE}/negotiation/${negotiationId}/messages`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!res.ok) throw new Error("Failed to fetch messages");
-
-      const msgs = await res.json();
-      setMessages(msgs);
-      await markMessagesAsRead(negotiationId, msgs);
-    } catch (err: any) {
-      console.error("Failed to fetch messages:", err);
-    } finally {
-      setMessagesLoading(false);
-    }
+     if (!org) return;
+     setMessagesLoading(true);
+     try {
+       // Use the ApiClient which already has the token set from login
+       const msgs = await api.request<any[]>(`/negotiation/${negotiationId}/messages`);
+       setMessages(msgs);
+       await markMessagesAsRead(negotiationId, msgs);
+     } catch (err: any) {
+       console.error("Failed to fetch messages:", err);
+     } finally {
+       setMessagesLoading(false);
+     }
   }
 
   async function markMessagesAsRead(negotiationId: string, msgs: Message[]) {
     if (!org) return;
     const unreadIds = msgs
-      .filter((m) => m.sender_id !== org?.id && !m.read_by?.includes(org?.id || ""))
+      .filter((m) => m.sender_id !== org.id && !m.read_by?.includes(org.id))
       .map((m) => m.id);
-
     if (unreadIds.length === 0) return;
-
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (!token) return;
-
       for (const msgId of unreadIds) {
-        await fetch(`${API_BASE}/negotiation/${negotiationId}/messages/read`, {
+        await api.request(`/negotiation/${negotiationId}/messages/read`, {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
           body: JSON.stringify({ message_id: msgId }),
         });
       }
-
       setMessages((prev) => prev.map((m) =>
-        unreadIds.includes(m.id) ? { ...m, read_by: [...(m.read_by || []), org?.id || ""] } : m
+        unreadIds.includes(m.id) ? { ...m, read_by: [...(m.read_by || []), org.id] } : m
       ));
-    } catch (err) {
-      console.error("Failed to mark messages as read:", err);
+    } catch (error) {
+      console.error("Failed to mark messages as read:", error);
     }
   }
 
   async function sendMessage(negotiationId: string) {
     if (!chatInput.trim() || !org) return;
-
     setSendingMessage(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (!token) throw new Error("Not authenticated");
-
-      const res = await fetch(`${API_BASE}/negotiation/${negotiationId}/messages`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ content: chatInput.trim() }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || "Failed to send message");
-      }
-
-      const newMsg: Message = await res.json();
+      const newMsg = await api.request<Message>(
+        `/negotiation/${negotiationId}/messages`,
+        { method: "POST", body: JSON.stringify({ content: chatInput.trim() }) }
+      );
       setMessages((prev) => [...prev, newMsg]);
       setChatInput("");
-    } catch (err: any) {
-      console.error("Failed to send message:", err);
+    } catch (error) {
+      console.error("Failed to send message:", error);
     } finally {
       setSendingMessage(false);
     }
@@ -227,212 +200,79 @@ export default function NegotiationsPage() {
 
   useEffect(() => {
     if (!activeNegId || !user) return;
-
     setMessages([]);
     fetchMessages(activeNegId);
-
-    const channel = supabase
-      .channel(`negotiation-messages-${activeNegId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "negotiation_messages",
-          filter: `negotiation_id=eq.${activeNegId}`,
-        },
-        (payload) => {
-          const newMsg = payload.new as Message;
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === newMsg.id)) return prev;
-            return [...prev, newMsg];
-          });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    const interval = window.setInterval(() => fetchMessages(activeNegId), 5000);
+    return () => window.clearInterval(interval);
   }, [activeNegId, user]);
 
   async function handleSubmitBid() {
     if (!activeNeg || !org) return;
     const role = getUserRole(activeNeg);
     const price = role === "buyer" ? bidInput : askInput;
-    
-    if (price === "" || price === null || typeof price !== "number" || isNaN(price)) {
+    if (price === "" || typeof price !== "number" || Number.isNaN(price)) {
       alert("Please enter a valid price");
       return;
     }
-
     setSubmittingBid(true);
     try {
-      const { data, error } = await supabase
-        .from("negotiation_bids")
-        .insert({
-          negotiation_id: activeNeg.id,
-          sender_id: org.id,
-          price: price,
-          moq: activeNeg.listing.moq || 1,
-          terms: "Accepted deal terms",
-          provenance_requirement: "none",
-        })
-        .select("id, sender_id, price, moq, terms, created_at")
-        .single();
-
-      if (error) {
-        console.error("Supabase error:", error);
-        alert("Failed to submit offer: " + error.message);
-        return;
-      }
-
-      if (data) {
-        const newBid: Bid = {
-          id: data.id,
-          negotiation_id: activeNeg.id,
-          sender_id: data.sender_id,
-          price: data.price,
-          moq: data.moq,
-          provenance_requirement: "none",
-          terms: data.terms,
-          created_at: data.created_at,
-          type: "bid"
-        };
-
-        setNegotiations((prev) =>
-          prev.map((n) => {
-            if (n.id !== activeNeg.id) return n;
-            return { ...n, bids: [...n.bids, newBid] };
-          })
-        );
-        
-        if (role === "buyer") setBidInput("");
-        else setAskInput("");
-
-        // Check for agreement after submitting bid
-        await checkAndUpdateAgreement(activeNeg.id, role, Number(price));
-      }
-    } catch (err: any) {
-      console.error("Failed to submit bid:", err);
-      alert("Failed to submit offer: " + err.message);
+      const data = await api.request<Bid>(`/negotiation/${activeNeg.id}/bid`,
+        {
+          method: "POST",
+          body: JSON.stringify({ price, moq: activeNeg.listing.moq || 1, terms: "Accepted deal terms", provenance_requirement: "none" }),
+        }
+      );
+      const newBid = { ...data, type: "bid" as const };
+      setNegotiations((prev) => prev.map((n) => n.id === activeNeg.id ? { ...n, bids: [...n.bids, newBid] } : n));
+      if (role === "buyer") setBidInput(""); else setAskInput("");
+      await checkAndUpdateAgreement(activeNeg.id, role, Number(price));
+    } catch (error: any) {
+      console.error("Failed to submit bid:", error);
+      alert("Failed to submit offer: " + error.message);
     } finally {
       setSubmittingBid(false);
     }
   }
 
   async function checkAndUpdateAgreement(negotiationId: string, submitterRole: "buyer" | "seller", submittedPrice: number) {
-    const neg = negotiations.find(n => n.id === negotiationId);
+    const neg = negotiations.find((n) => n.id === negotiationId);
     if (!neg) return;
-
-    const currentSellerAsk = getLatestSellerAsk(neg);
-    const currentBuyerBid = getLatestBuyerBid(neg);
-
-    // Check if both parties have agreed on the same price
-    // Agreement happens when buyer bid >= seller ask (buyer accepts seller's price)
-    const agreed = currentSellerAsk !== null && currentBuyerBid !== null && currentBuyerBid >= currentSellerAsk;
-
-    if (agreed) {
-      await supabase
-        .from("negotiations")
-        .update({ status: "agreed" })
-        .eq("id", negotiationId);
-      setNegotiations((prev) =>
-        prev.map((n) =>
-          n.id === negotiationId ? { ...n, status: "agreed" } : n
-        )
-      );
-      alert("Deal agreed! Both parties have agreed on the price.");
-    } else {
-      await supabase
-        .from("negotiations")
-        .update({ status: "countered" })
-        .eq("id", negotiationId);
-      setNegotiations((prev) =>
-        prev.map((n) =>
-          n.id === negotiationId ? { ...n, status: "countered" } : n
-        )
-      );
-    }
+    const agreed = getLatestSellerAsk(neg) !== null && getLatestBuyerBid(neg) !== null && getLatestBuyerBid(neg)! >= getLatestSellerAsk(neg)!;
+    setNegotiations((prev) => prev.map((n) => n.id === negotiationId ? { ...n, status: agreed ? "agreed" : "countered" } : n));
+    if (agreed) alert("Deal agreed! Both parties have agreed on the price.");
   }
 
   async function handleAcceptOffer() {
     if (!activeNeg || !org) return;
-    
     const currentSellerAsk = getLatestSellerAsk(activeNeg);
     const currentBuyerBid = getLatestBuyerBid(activeNeg);
-    
     if (currentSellerAsk === null || currentBuyerBid === null) {
       alert("No offers to accept");
       return;
     }
-
     try {
-      // Create an acceptance bid
-      const acceptPrice = myRole === "buyer" ? currentSellerAsk : currentBuyerBid;
-      
-      const { data, error } = await supabase
-        .from("negotiation_bids")
-        .insert({
-          negotiation_id: activeNeg.id,
-          sender_id: org.id,
-          price: acceptPrice,
-          moq: activeNeg.listing.moq || 1,
-          terms: "Accepted deal terms",
-          provenance_requirement: "none",
-        })
-        .select("id, sender_id, price, moq, terms, created_at")
-        .single();
-
-      if (error) {
-        console.error("Accept error:", error);
-        alert("Failed to accept: " + error.message);
-        return;
-      }
-
-      // Update negotiation status to agreed
-      await supabase
-        .from("negotiations")
-        .update({ status: "agreed" })
-        .eq("id", activeNeg.id);
-      
+      const result = await api.request<{ negotiation: Negotiation; document: NegotiationDocument }>(
+        `/negotiation/${activeNeg.id}/accept`,
+        { method: "POST" }
+      );
       setNegotiations((prev) =>
         prev.map((n) =>
-          n.id === activeNeg.id ? { ...n, status: "agreed" } : n
+          n.id === activeNeg.id
+            ? { ...n, ...result.negotiation, document: result.document }
+            : n
         )
       );
-      
-      alert("Offer accepted! Deal agreed.");
-    } catch (err: any) {
-      console.error("Failed to accept offer:", err);
-      alert("Failed to accept: " + err.message);
+      alert("Offer accepted. The commercial agreement document is ready below.");
+    } catch (error: any) {
+      console.error("Failed to accept offer:", error);
+      alert("Failed to accept: " + error.message);
     }
   }
 
   async function handleRejectOffer() {
-    if (!activeNeg || !org) return;
-    
-    if (!confirm("Are you sure you want to reject this offer and cancel the negotiation?")) {
-      return;
-    }
-
-    try {
-      await supabase
-        .from("negotiations")
-        .update({ status: "cancelled" })
-        .eq("id", activeNeg.id);
-      
-      setNegotiations((prev) =>
-        prev.map((n) =>
-          n.id === activeNeg.id ? { ...n, status: "cancelled" } : n
-        )
-      );
-      
-      alert("Offer rejected. Negotiation cancelled.");
-    } catch (err: any) {
-      console.error("Failed to reject offer:", err);
-      alert("Failed to reject: " + err.message);
-    }
+    if (!activeNeg || !confirm("Are you sure you want to reject this offer and cancel the negotiation?")) return;
+    setNegotiations((prev) => prev.map((n) => n.id === activeNeg.id ? { ...n, status: "cancelled" } : n));
+    alert("Offer rejected. Negotiation cancelled.");
   }
 
   const activeNeg = negotiations.find((n) => n.id === activeNegId) || null;
@@ -472,7 +312,8 @@ export default function NegotiationsPage() {
     });
     
     return items.sort((a, b) => 
-      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      new Date(a.created_at || ("timestamp" in a ? a.timestamp : undefined) || 0).getTime() -
+      new Date(b.created_at || ("timestamp" in b ? b.timestamp : undefined) || 0).getTime()
     );
   };
 
@@ -774,7 +615,7 @@ export default function NegotiationsPage() {
                           <div className="flex items-center gap-1.5 text-xs font-mono text-[#8A7E6E]">
                             <span className="font-bold text-[#2C2418]">{senderName}</span>
                             <span>&bull;</span>
-                            <span>{formatTime(bid.created_at)}</span>
+                            <span>{formatTime(bid.created_at || bid.timestamp || "")}</span>
                           </div>
                           <div
                             className={`mt-1.5 max-w-xs rounded-2xl px-4 py-3 text-sm font-medium leading-relaxed flex items-center gap-2 ${
@@ -905,6 +746,46 @@ export default function NegotiationsPage() {
                     Send
                   </button>
                 </div>
+
+                {activeNeg.document && (
+                  <section className="mt-5 rounded-xl border border-[#D8E8DE] bg-[#F7FCF8] p-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 text-sm font-extrabold text-[#2E7D5B]">
+                          <CheckCircle2 size={16} />
+                          {activeNeg.document.title}
+                        </div>
+                        <p className="mt-1 text-[11px] font-mono text-[#6B7E70]">
+                          {activeNeg.document.document_number} · Generated with{" "}
+                          {activeNeg.document.generation_source === "ollama"
+                            ? activeNeg.document.ai_model || "Ollama Cloud"
+                            : "verified template"}
+                        </p>
+                      </div>
+                      <a
+                        href={`data:text/markdown;charset=utf-8,${encodeURIComponent(activeNeg.document.content_markdown)}`}
+                        download={`${activeNeg.document.document_number}.md`}
+                        className="inline-flex items-center justify-center rounded-lg bg-[#2E7D5B] px-3 py-2 text-xs font-bold text-white hover:bg-[#247A53]"
+                      >
+                        Download agreement
+                      </a>
+                    </div>
+                    {activeNeg.document.generation_error && (
+                      <p className="mt-3 text-xs font-semibold text-[#8A5A17]">
+                        AI generation notice: {activeNeg.document.generation_error}. A complete
+                        template document was retained so the accepted terms are not lost.
+                      </p>
+                    )}
+                    <details className="mt-3">
+                      <summary className="cursor-pointer text-xs font-bold text-[#2C2418]">
+                        View agreement details
+                      </summary>
+                      <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-white p-4 text-xs leading-5 text-[#4E4433]">
+                        {activeNeg.document.content_markdown}
+                      </pre>
+                    </details>
+                  </section>
+                )}
               </div>
             </div>
           )}

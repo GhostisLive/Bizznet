@@ -32,6 +32,18 @@ class Settings(BaseSettings):
         default="",
         validation_alias="SUPABASE_JWT_SECRET",
     )
+    OLLAMA_CLOUD_URL: str = Field(
+        default="https://ollama.com/api/chat",
+        validation_alias="OLLAMA_CLOUD_URL",
+    )
+    OLLAMA_CLOUD_API_KEY: str = Field(
+        default="",
+        validation_alias="OLLAMA_CLOUD_API_KEY",
+    )
+    OLLAMA_MODEL: str = Field(
+        default="gpt-oss:120b",
+        validation_alias="OLLAMA_MODEL",
+    )
 
     class Config:
         env_file = ".env"

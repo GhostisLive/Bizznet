@@ -16,6 +16,7 @@ from app.modules.negotiation.models import (
     NegotiationMessageRead,
     MessageReadReceiptCreate,
     MessageReadReceiptRead,
+    NegotiationDocumentRead,
 )
 from app.modules.negotiation import service
 from app.modules.negotiation.models import Negotiation, NegotiationMessage
@@ -58,6 +59,46 @@ async def submit_bid(
             detail="Cannot submit bid. Negotiation not found or not active.",
         )
     return bid
+
+
+@router.post("/{negotiation_id}/accept")
+async def accept_negotiation_offer(
+    negotiation_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Accepts the counterparty's latest offer and generates the agreement document."""
+    try:
+        negotiation, document = await service.accept_offer(
+            negotiation_id, current_user.organization_id, db
+        )
+        return {
+            "negotiation": negotiation,
+            "document": document,
+        }
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+
+@router.get("/{negotiation_id}/document", response_model=NegotiationDocumentRead)
+async def get_negotiation_document(
+    negotiation_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Returns the latest agreement document for a negotiation participant."""
+    negotiation = await service.get_negotiation_detail(negotiation_id, db)
+    if not negotiation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Negotiation not found")
+    if current_user.organization_id not in (negotiation.buyer_id, negotiation.seller_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a participant in this negotiation")
+    document = await service.get_negotiation_document(negotiation_id, db)
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement document not generated")
+    return document
 
 
 @router.post("/{negotiation_id}/review-trace", response_model=NegotiationRead)
@@ -244,4 +285,3 @@ async def send_negotiation_message(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
-

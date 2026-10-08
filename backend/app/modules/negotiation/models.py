@@ -1,7 +1,7 @@
-from sqlmodel import SQLModel, Field
+from sqlmodel import SQLModel, Field, Column, JSON
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 
 # ── DB Tables ───────────────────────────────────────────────
@@ -35,6 +35,10 @@ class Negotiation(SQLModel, table=True):
     listing_id: UUID = Field(foreign_key="listings.id")
     status: str = Field(default="active", max_length=50)  # active | terms_locked | contract_signed | completed | cancelled
     provenance_reviewed: bool = Field(default=False)  # buyer must review trace before lock
+    accepted_price: Optional[float] = None
+    accepted_moq: Optional[float] = None
+    accepted_by: Optional[UUID] = Field(default=None, foreign_key="organizations.id")
+    accepted_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -48,6 +52,24 @@ class NegotiationBid(SQLModel, table=True):
     moq: float
     provenance_requirement: Optional[str] = Field(default=None, max_length=50)  # minimum provenance grade required
     terms: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class NegotiationDocument(SQLModel, table=True):
+    """Immutable, participant-visible agreement generated from accepted terms."""
+
+    __tablename__ = "negotiation_documents"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    negotiation_id: UUID = Field(foreign_key="negotiations.id", index=True)
+    document_type: str = Field(default="commercial_agreement", max_length=80)
+    document_number: str = Field(max_length=100)
+    title: str = Field(max_length=255)
+    content_markdown: str
+    terms_snapshot: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    generation_source: str = Field(max_length=30)  # ollama | template
+    ai_model: Optional[str] = Field(default=None, max_length=100)
+    generation_error: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -65,6 +87,10 @@ class NegotiationRead(SQLModel):
     status: str
     provenance_reviewed: bool
     created_at: datetime
+    accepted_price: Optional[float] = None
+    accepted_moq: Optional[float] = None
+    accepted_by: Optional[UUID] = None
+    accepted_at: Optional[datetime] = None
 
 
 class BidCreate(SQLModel):
@@ -109,3 +135,16 @@ class MessageReadReceiptRead(SQLModel):
     user_id: UUID
     read_at: datetime
 
+
+class NegotiationDocumentRead(SQLModel):
+    id: UUID
+    negotiation_id: UUID
+    document_type: str
+    document_number: str
+    title: str
+    content_markdown: str
+    terms_snapshot: dict[str, Any]
+    generation_source: str
+    ai_model: Optional[str]
+    generation_error: Optional[str]
+    created_at: datetime

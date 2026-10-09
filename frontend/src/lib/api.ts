@@ -26,11 +26,13 @@ function getApiBase(): string {
         // Fall through to the browser-derived URL for an invalid build value.
       }
     }
-    return `http://${window.location.hostname}:8000/api/v1`;
+    return "/api/backend/api/v1";
   }
   if (CONFIGURED_API_BASE) return CONFIGURED_API_BASE.replace(/\/+$/, "");
-  return "http://127.0.0.1:8000/api/v1";
+  return "/api/backend/api/v1";
 }
+
+export const API_BASE = getApiBase();
 const TOKEN_KEY = 'bizznet_access_token';
 const REFRESH_KEY = 'bizznet_refresh_token';
 

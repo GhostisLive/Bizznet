@@ -68,8 +68,6 @@ const CATEGORY_OPTIONS = [
 
 const STATUS_OPTIONS = ["Active", "Under Production", "On Hold", "Discontinued"] as const;
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
-
 export default function ProductsPage() {
   return (
     <Suspense fallback={<div className="p-8 text-center text-base font-mono text-[#5C5040]">Loading Products Portfolio...</div>}>

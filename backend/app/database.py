@@ -16,6 +16,9 @@ engine = create_async_engine(
     echo=False,
     future=True,
     pool_pre_ping=True,
+    # Supabase's pooler requires TLS. Passing this through to asyncpg avoids
+    # platform-dependent SSL negotiation failures during startup.
+    connect_args={"ssl": "require"},
 )
 
 # Async session factory

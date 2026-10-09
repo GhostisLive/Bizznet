@@ -18,6 +18,11 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
+By default, API requests are proxied through Next.js to the local backend on
+port 8000, so clients connected over the LAN do not need to reach a
+client-side `localhost:8000`. Set `NEXT_PUBLIC_API_URL` only when the API is
+hosted at a different address.
+
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## Learn More

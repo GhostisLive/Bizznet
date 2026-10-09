@@ -8,7 +8,6 @@ import { useCurrentOrg } from "@/lib/useCurrentOrg";
 import { api } from "@/lib/api";
 import {
   Handshake,
-  ShieldCheck,
   TrendingUp,
   Clock,
   CheckCircle2,
@@ -22,7 +21,8 @@ import {
   Layers,
   Package,
   MapPin,
-  ChevronRight
+  ChevronRight,
+  ClipboardCheck
 } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
@@ -157,14 +157,23 @@ function DashboardContent() {
       <Sidebar currentRole={currentOrg.roleLabel} orgName={currentOrg.orgName} nodeId={currentOrg.nodeId} />
 
       <main className="flex-1 p-6 md:p-10 space-y-8 overflow-x-hidden max-w-[1600px] mx-auto w-full">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[#E8E0D4]">
+<div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[#E8E0D4]">
           <div>
             <h1 className="text-3xl md:text-4xl font-extrabold text-[#2C2418] tracking-tight">
               {currentOrg.orgName} &middot; {currentOrg.roleLabel} Dashboard
             </h1>
             <p className="text-base font-semibold text-[#5C5040] mt-1">
-              BizzNet Supply Chain &amp; Carbon Intelligence Platform
+              BizzNet Supply Chain & Carbon Intelligence Platform
             </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/request-audit"
+              className="inline-flex items-center gap-2 rounded-xl bg-[#2E7D5B] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#247A53] transition-colors"
+            >
+              <ClipboardCheck size={14} />
+              Request Audit
+            </Link>
           </div>
         </div>
 

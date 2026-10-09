@@ -128,6 +128,31 @@ async def get_negotiation_document(
     return result.scalar_one_or_none()
 
 
+async def regenerate_negotiation_document(
+    negotiation_id: UUID,
+    requesting_org_id: UUID,
+    db: AsyncSession,
+) -> NegotiationDocument:
+    negotiation = await get_negotiation_detail(negotiation_id, db)
+    if not negotiation:
+        raise ValueError("Negotiation not found")
+    if requesting_org_id not in (negotiation.buyer_id, negotiation.seller_id):
+        raise ValueError("Not a participant in this negotiation")
+
+    document = await get_negotiation_document(negotiation_id, db)
+    if not document:
+        raise ValueError("Agreement document not generated")
+
+    content, source, generation_error = await generate_agreement(document.terms_snapshot)
+    document.content_markdown = content
+    document.generation_source = source
+    document.ai_model = settings.OLLAMA_MODEL if source == "ollama" else None
+    document.generation_error = generation_error
+    await db.commit()
+    await db.refresh(document)
+    return document
+
+
 async def accept_offer(
     negotiation_id: UUID,
     accepting_org_id: UUID,

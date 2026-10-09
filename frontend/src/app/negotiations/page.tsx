@@ -763,14 +763,27 @@ export default function NegotiationsPage() {
                         </p>
                       </div>
                       <button
-                        onClick={async () => {
-                          const blob = await api.downloadAgreementPdf(activeNeg.document!.negotiation_id);
-                          const url = URL.createObjectURL(blob);
-                          const link = document.createElement("a");
-                          link.href = url;
-                          link.download = `${activeNeg.document!.document_number}.pdf`;
-                          link.click();
-                          URL.revokeObjectURL(url);
+                        onClick={async (event) => {
+                          const button = event.currentTarget;
+                          button.disabled = true;
+                          try {
+                            const documentToDownload = activeNeg.document;
+                            if (!documentToDownload) return;
+                            const blob = await api.downloadAgreementPdf(documentToDownload.negotiation_id);
+                            const url = URL.createObjectURL(blob);
+                            const link = document.createElement("a");
+                            link.href = url;
+                            link.download = `${documentToDownload.document_number}.pdf`;
+                            link.style.display = "none";
+                            document.body.appendChild(link);
+                            link.click();
+                            link.remove();
+                            window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+                          } catch (error) {
+                            alert(error instanceof Error ? error.message : "Unable to download agreement.");
+                          } finally {
+                            button.disabled = false;
+                          }
                         }}
                         className="inline-flex items-center justify-center rounded-lg bg-[#2E7D5B] px-3 py-2 text-xs font-bold text-white hover:bg-[#247A53]"
                       >
@@ -778,10 +791,31 @@ export default function NegotiationsPage() {
                       </button>
                     </div>
                     {activeNeg.document.generation_error && (
-                      <p className="mt-3 text-xs font-semibold text-[#8A5A17]">
-                        AI generation notice: {activeNeg.document.generation_error}. A complete
-                        template document was retained so the accepted terms are not lost.
-                      </p>
+                      <div className="mt-3 flex flex-col gap-3 rounded-lg border border-[#E9D7A9] bg-[#FFF8E7] p-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-xs font-semibold text-[#8A5A17]">
+                          AI generation notice: {activeNeg.document.generation_error}. A complete
+                          template document was retained so the accepted terms are not lost.
+                        </p>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const regenerated = await api.regenerateAgreement(activeNeg.document!.negotiation_id);
+                              setNegotiations((current) =>
+                                current.map((negotiation) =>
+                                  negotiation.id === activeNeg.document!.negotiation_id
+                                    ? { ...negotiation, document: regenerated }
+                                    : negotiation
+                                )
+                              );
+                            } catch (error) {
+                              alert(error instanceof Error ? error.message : "Unable to regenerate agreement.");
+                            }
+                          }}
+                          className="shrink-0 rounded-lg bg-[#6B5B3E] px-3 py-2 text-xs font-bold text-white hover:bg-[#564A32]"
+                        >
+                          Retry AI generation
+                        </button>
+                      </div>
                     )}
                     <details className="mt-3">
                       <summary className="cursor-pointer text-xs font-bold text-[#2C2418]">

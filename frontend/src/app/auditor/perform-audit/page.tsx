@@ -24,6 +24,7 @@ function PerformAuditContent() {
   const [score, setScore] = useState("");
   const [findings, setFindings] = useState("");
   const [recommendations, setRecommendations] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
 
   useEffect(() => {
     if (currentOrg.loading) return;
@@ -72,14 +73,15 @@ function PerformAuditContent() {
     setSaving(true);
     setError("");
     try {
-      await api.updateAuditRequest(request.id, { status: "completed" });
-      await api.createAuditLog({
+      const result = await api.completeAudit({
         request_id: request.id,
         score: Number(score),
         findings: findings.trim(),
         recommendations: recommendations.trim(),
+        expires_at: expiresAt ? new Date(`${expiresAt}T23:59:59`).toISOString() : undefined,
       });
-      setSuccess(true);
+      setRequest({ ...request, status: "completed" });
+      setSuccess(Boolean(result.certification.certificate_number));
       setTimeout(() => router.push("/auditor/audit-logs"), 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to complete audit");
@@ -139,6 +141,7 @@ function PerformAuditContent() {
               <ShieldCheck size={15} className="text-[#2E7D5B]" />
               Auditor workspace
             </div>
+
             <h1 className="mt-3 text-3xl font-extrabold tracking-tight md:text-4xl">
               {isCompleted ? "Audit completed" : "Perform audit"}
             </h1>
@@ -189,7 +192,7 @@ function PerformAuditContent() {
 
         {success && (
           <div role="status" className="rounded-xl border border-[#2E7D5B]/25 bg-[#EEF7F2] px-4 py-3 text-sm font-semibold text-[#2E7D5B]">
-            Audit completed and logged successfully. Redirecting...
+            Audit completed. Certificate generated and shared with the organization. Redirecting...
           </div>
         )}
 
@@ -247,7 +250,7 @@ function PerformAuditContent() {
           </div>
         </section>
 
-        {isInProgress && (
+        {(isPending || isInProgress) && (
           <section className="rounded-2xl border border-[#E8E0D4] bg-white shadow-sm">
             <div className="border-b border-[#E8E0D4] p-5">
               <h2 className="text-xl font-extrabold">Perform audit</h2>
@@ -294,6 +297,18 @@ function PerformAuditContent() {
                   onChange={(e) => setRecommendations(e.target.value)}
                   placeholder="Provide recommendations for improvement, corrective actions, or follow-up items..."
                   className="w-full px-4 py-2.5 border border-[#E8E0D4] bg-[#FAF8F5] rounded-xl text-sm font-semibold text-[#2C2418] placeholder:text-[#A89B8A] focus:outline-none focus:ring-2 focus:ring-[#6B5B3E] resize-y"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono font-bold text-[#8A7E6E] uppercase mb-1.5">
+                  Certificate expiry
+                </label>
+                <input
+                  type="date"
+                  value={expiresAt}
+                  onChange={(e) => setExpiresAt(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-[#E8E0D4] bg-[#FAF8F5] rounded-xl text-sm font-semibold text-[#2C2418] focus:outline-none focus:ring-2 focus:ring-[#6B5B3E]"
                 />
               </div>
 

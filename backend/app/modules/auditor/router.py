@@ -11,6 +11,9 @@ from app.modules.auditor.models import (
     CompanyAuditRequestCreate,
     AuditorRead,
     AuditRequestRead,
+    AuditRequestUpdate,
+    AuditCompletionCreate,
+    AuditCompletionRead,
     AuditLogRead,
     AuditorCompanyRead,
     AuditorMessageCreate,
@@ -137,6 +140,48 @@ async def audit_requests(current_user: CurrentUser = Depends(auditor_user), db: 
     ]
 
 
+@router.patch("/audit-requests/{request_id}", response_model=AuditRequestRead)
+async def update_audit_request(
+    request_id: UUID,
+    data: AuditRequestUpdate,
+    current_user: CurrentUser = Depends(auditor_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        request = await service.update_audit_request(
+            current_user.organization_id, request_id, data, db
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    company = await service.get_company(request.company_id, db)
+    return AuditRequestRead(**request.model_dump(), company=service._company(company))
+
+
+@router.post("/audit-requests/{request_id}/complete", response_model=AuditCompletionRead)
+async def complete_audit(
+    request_id: UUID,
+    data: AuditCompletionCreate,
+    current_user: CurrentUser = Depends(auditor_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        audit_log, certificate = await service.complete_audit(
+            current_user.organization_id, request_id, data, db
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    company = await service.get_company(certificate.company_id, db)
+    company_read = service._company(company)
+    return AuditCompletionRead(
+        audit_log=AuditLogRead(
+            **audit_log.model_dump(), company=company_read
+        ),
+        certification=CertificationRead(
+            **certificate.model_dump(), company=company_read
+        ),
+    )
+
+
 @router.get("/audit-logs", response_model=list[AuditLogRead])
 async def audit_logs(current_user: CurrentUser = Depends(auditor_user), db: AsyncSession = Depends(get_db)):
     return [
@@ -150,6 +195,21 @@ async def certifications(current_user: CurrentUser = Depends(auditor_user), db: 
     return [
         CertificationRead(**certificate.model_dump(), company=service._company(company))
         for certificate, company in await service.list_certifications(current_user.organization_id, db)
+    ]
+
+
+@router.get("/company-certifications", response_model=list[CertificationRead])
+async def company_certifications(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role in {"auditor", "admin"}:
+        raise HTTPException(status_code=403, detail="Only companies can view company certifications")
+    return [
+        CertificationRead(**certificate.model_dump(), company=service._company(company))
+        for certificate, company in await service.list_company_certifications(
+            current_user.organization_id, db
+        )
     ]
 
 

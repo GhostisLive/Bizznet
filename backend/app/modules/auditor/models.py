@@ -99,6 +99,17 @@ class AuditRequestCreate(SQLModel):
     due_at: Optional[datetime] = None
 
 
+class AuditRequestUpdate(SQLModel):
+    status: Literal["pending", "in_progress", "completed"]
+
+
+class AuditCompletionCreate(SQLModel):
+    score: int = Field(ge=0, le=100)
+    findings: str = Field(min_length=1, max_length=10000)
+    recommendations: Optional[str] = Field(default=None, max_length=10000)
+    expires_at: Optional[datetime] = None
+
+
 class CompanyAuditRequestCreate(SQLModel):
     auditor_id: UUID
     audit_type: Literal["company", "labour", "carbon"] = "company"
@@ -156,3 +167,8 @@ class CertificationRead(SQLModel):
     issued_at: datetime
     expires_at: Optional[datetime]
     status: str
+
+
+class AuditCompletionRead(SQLModel):
+    audit_log: AuditLogRead
+    certification: CertificationRead

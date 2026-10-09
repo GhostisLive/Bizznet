@@ -41,9 +41,9 @@ export default function RequestAuditPage() {
         auditor_id: auditorId,
         audit_type: auditType,
         scope_note: scopeNote.trim() || undefined,
-        due_at: dueDate || undefined,
+        due_at: dueDate ? new Date(`${dueDate}T23:59:59`).toISOString() : undefined,
       });
-      router.push("/dashboard");
+      router.push("/company-audit");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create audit request");
     } finally {

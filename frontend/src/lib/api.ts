@@ -1,4 +1,36 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1';
+const CONFIGURED_API_BASE = process.env.NEXT_PUBLIC_API_URL;
+
+function getApiBase(): string {
+  if (typeof window !== "undefined") {
+    if (CONFIGURED_API_BASE) {
+      try {
+        const configured = new URL(CONFIGURED_API_BASE);
+        const browserHost = window.location.hostname;
+        const browserIsLocal =
+          browserHost === "localhost" ||
+          browserHost === "127.0.0.1" ||
+          browserHost === "::1";
+        const configuredIsLocal =
+          configured.hostname === "localhost" ||
+          configured.hostname === "127.0.0.1" ||
+          configured.hostname === "::1";
+
+        // A frontend build often contains localhost from the developer's
+        // machine. Replace only that loopback host when another client opens
+        // the app over the LAN; keep an explicitly configured remote API host.
+        if (!browserIsLocal && configuredIsLocal) {
+          configured.hostname = browserHost;
+        }
+        return configured.toString().replace(/\/+$/, "");
+      } catch {
+        // Fall through to the browser-derived URL for an invalid build value.
+      }
+    }
+    return `http://${window.location.hostname}:8000/api/v1`;
+  }
+  if (CONFIGURED_API_BASE) return CONFIGURED_API_BASE.replace(/\/+$/, "");
+  return "http://127.0.0.1:8000/api/v1";
+}
 const TOKEN_KEY = 'bizznet_access_token';
 const REFRESH_KEY = 'bizznet_refresh_token';
 
@@ -132,6 +164,20 @@ export interface Certification {
   status: string;
 }
 
+export interface NegotiationDocument {
+  id: string;
+  negotiation_id: string;
+  document_type: string;
+  document_number: string;
+  title: string;
+  content_markdown: string;
+  terms_snapshot: Record<string, unknown>;
+  generation_source: 'ollama' | 'template';
+  ai_model: string | null;
+  generation_error: string | null;
+  created_at: string;
+}
+
 export interface AuditorMessage {
   id: string;
   conversation_id: string;
@@ -158,8 +204,8 @@ class ApiClient {
   private refreshPromise: Promise<boolean> | null = null;
   private lastRefreshAttempt = 0;
 
-  constructor(baseUrl: string = API_BASE) {
-    this.baseUrl = baseUrl;
+  constructor(baseUrl: string = getApiBase()) {
+    this.baseUrl = baseUrl.replace(/\/+$/, '');
     if (typeof window !== "undefined") {
       this.token = localStorage.getItem(TOKEN_KEY);
       this.refreshTokenValue = localStorage.getItem(REFRESH_KEY);
@@ -255,17 +301,30 @@ class ApiClient {
       await this.refreshTokens();
     }
 
-    let response = await fetch(`${this.baseUrl}${endpoint}`, {
-      ...options,
-      headers: this.buildHeaders(options),
-    });
-
-    // Expired access token: refresh once, then retry the original request.
-    if (response.status === 401 && canRefresh && (await this.refreshTokens())) {
+    let response: Response;
+    try {
       response = await fetch(`${this.baseUrl}${endpoint}`, {
         ...options,
         headers: this.buildHeaders(options),
       });
+    } catch {
+      throw new Error(
+        `Unable to reach the BizzNet API at ${this.baseUrl}. Check that the backend is running and accessible from this client.`,
+      );
+    }
+
+    // Expired access token: refresh once, then retry the original request.
+    if (response.status === 401 && canRefresh && (await this.refreshTokens())) {
+      try {
+        response = await fetch(`${this.baseUrl}${endpoint}`, {
+          ...options,
+          headers: this.buildHeaders(options),
+        });
+      } catch {
+        throw new Error(
+          `Unable to reach the BizzNet API at ${this.baseUrl}. Check that the backend is running and accessible from this client.`,
+        );
+      }
     }
 
     if (!response.ok) {
@@ -284,14 +343,49 @@ class ApiClient {
 
   async downloadAgreementPdf(negotiationId: string): Promise<Blob> {
     const endpoint = `/negotiation/${negotiationId}/document/pdf`;
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      headers: this.buildHeaders({}),
-    });
+    const canRefresh = Boolean(this.refreshTokenValue);
+    if (!this.token && canRefresh) {
+      await this.refreshTokens();
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${endpoint}`, {
+        headers: this.buildHeaders({}),
+      });
+    } catch {
+      throw new Error(
+        `Unable to reach the BizzNet API at ${this.baseUrl}. Check that the backend is running and accessible from this client.`,
+      );
+    }
+
+    if (response.status === 401 && canRefresh && (await this.refreshTokens())) {
+      try {
+        response = await fetch(`${this.baseUrl}${endpoint}`, {
+          headers: this.buildHeaders({}),
+        });
+      } catch {
+        throw new Error(
+          `Unable to reach the BizzNet API at ${this.baseUrl}. Check that the backend is running and accessible from this client.`,
+        );
+      }
+    }
+
     if (!response.ok) {
       const error = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
+      if (response.status === 401) {
+        this.setToken('');
+        throw new AuthError(error.detail || 'Authentication required', 401);
+      }
       throw new Error(error.detail || `HTTP ${response.status}`);
     }
     return response.blob();
+  }
+
+  async regenerateAgreement(negotiationId: string): Promise<NegotiationDocument> {
+    return this.request(`/negotiation/${negotiationId}/document/regenerate`, {
+      method: "POST",
+    });
   }
 
   // Auth
@@ -391,6 +485,10 @@ class ApiClient {
     return this.request('/auditor/certifications');
   }
 
+  async getCompanyCertifications(): Promise<Certification[]> {
+    return this.request('/auditor/company-certifications');
+  }
+
   async createCertification(input: { company_id: string; audit_type: Certification['audit_type']; score?: number; expires_at?: string }): Promise<Certification> {
     return this.request('/auditor/certifications', { method: 'POST', body: JSON.stringify(input) });
   }
@@ -407,8 +505,16 @@ class ApiClient {
     return this.request(`/auditor/audit-requests/${requestId}`, { method: 'PATCH', body: JSON.stringify(input) });
   }
 
-  async createAuditLog(input: { request_id: string; score: number; findings: string; recommendations: string }): Promise<AuditLog> {
-    return this.request('/auditor/audit-logs', { method: 'POST', body: JSON.stringify(input) });
+  async completeAudit(input: { request_id: string; score: number; findings: string; recommendations?: string; expires_at?: string }): Promise<{ audit_log: AuditLog; certification: Certification }> {
+    return this.request(`/auditor/audit-requests/${input.request_id}/complete`, {
+      method: 'POST',
+      body: JSON.stringify({
+        score: input.score,
+        findings: input.findings,
+        recommendations: input.recommendations,
+        expires_at: input.expires_at,
+      }),
+    });
   }
 
   async getAuditorMessages(companyId: string): Promise<AuditorMessage[]> {

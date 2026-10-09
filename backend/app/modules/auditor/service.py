@@ -9,6 +9,8 @@ from app.modules.auditor.models import (
     AuditLog,
     AuditRequest,
     AuditRequestCreate,
+    AuditRequestUpdate,
+    AuditCompletionCreate,
     CompanyAuditRequestCreate,
     AuditorRead,
     AuditorCompanyRead,
@@ -174,6 +176,89 @@ async def create_audit_request(
     return request
 
 
+async def update_audit_request(
+    auditor_id: UUID,
+    request_id: UUID,
+    data: AuditRequestUpdate,
+    db: AsyncSession,
+) -> AuditRequest:
+    request = await db.scalar(
+        select(AuditRequest).where(
+            AuditRequest.id == request_id,
+            AuditRequest.auditor_id == auditor_id,
+        )
+    )
+    if not request:
+        raise ValueError("Audit request not found")
+    if request.status == "completed" and data.status != "completed":
+        raise ValueError("Completed audits cannot be reopened")
+    request.status = data.status
+    await db.commit()
+    await db.refresh(request)
+    return request
+
+
+async def complete_audit(
+    auditor_id: UUID,
+    request_id: UUID,
+    data: AuditCompletionCreate,
+    db: AsyncSession,
+) -> tuple[AuditLog, Certification]:
+    request = await db.scalar(
+        select(AuditRequest).where(
+            AuditRequest.id == request_id,
+            AuditRequest.auditor_id == auditor_id,
+        )
+    )
+    if not request:
+        raise ValueError("Audit request not found")
+    if request.status == "completed":
+        existing_log = await db.scalar(
+            select(AuditLog).where(AuditLog.request_id == request.id)
+        )
+        existing_certificate = await db.scalar(
+            select(Certification).where(
+                Certification.auditor_id == auditor_id,
+                Certification.company_id == request.company_id,
+                Certification.audit_type == request.audit_type,
+                Certification.score == data.score,
+            ).order_by(Certification.issued_at.desc())
+        )
+        if existing_log and existing_certificate:
+            return existing_log, existing_certificate
+        raise ValueError("Audit request has already been completed")
+
+    now = datetime.now(timezone.utc)
+    audit_log = AuditLog(
+        request_id=request.id,
+        auditor_id=auditor_id,
+        company_id=request.company_id,
+        audit_type=request.audit_type,
+        score=data.score,
+        findings=data.findings.strip(),
+        recommendations=data.recommendations.strip() if data.recommendations else None,
+        completed_at=now,
+    )
+    sequence = await db.scalar(
+        select(func.count(Certification.id)).where(Certification.auditor_id == auditor_id)
+    )
+    certificate = Certification(
+        auditor_id=auditor_id,
+        company_id=request.company_id,
+        audit_type=request.audit_type,
+        score=data.score,
+        expires_at=data.expires_at,
+        certificate_number=f"CERT-{now.year}-{(sequence or 0) + 1:04d}",
+    )
+    request.status = "completed"
+    db.add(audit_log)
+    db.add(certificate)
+    await db.commit()
+    await db.refresh(audit_log)
+    await db.refresh(certificate)
+    return audit_log, certificate
+
+
 async def create_company_audit_request(
     company_id: UUID,
     data: CompanyAuditRequestCreate,
@@ -235,6 +320,21 @@ async def list_certifications(auditor_id: UUID, db: AsyncSession) -> list[tuple[
         select(Certification, Organization)
         .join(Organization, Organization.id == Certification.company_id)
         .where(Certification.auditor_id == auditor_id)
+        .order_by(Certification.issued_at.desc())
+    )
+    return list(result.all())
+
+
+async def list_company_certifications(
+    company_id: UUID, db: AsyncSession
+) -> list[tuple[Certification, Organization]]:
+    result = await db.execute(
+        select(Certification, Organization)
+        .join(Organization, Organization.id == Certification.company_id)
+        .where(
+            Certification.company_id == company_id,
+            Certification.status == "active",
+        )
         .order_by(Certification.issued_at.desc())
     )
     return list(result.all())

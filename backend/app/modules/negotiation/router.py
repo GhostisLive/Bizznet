@@ -22,6 +22,7 @@ from app.modules.negotiation.models import (
     NegotiationDocumentRead,
 )
 from app.modules.negotiation import service
+from app.modules.negotiation.document_service import agreement_pdf
 from app.modules.negotiation.models import Negotiation, NegotiationMessage
 
 router = APIRouter(prefix="/negotiation", tags=["Negotiation Engine"])
@@ -104,6 +105,23 @@ async def get_negotiation_document(
     return document
 
 
+@router.post("/{negotiation_id}/document/regenerate", response_model=NegotiationDocumentRead)
+async def regenerate_negotiation_document(
+    negotiation_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retries AI generation using the immutable accepted terms snapshot."""
+    try:
+        return await service.regenerate_negotiation_document(
+            negotiation_id, current_user.organization_id, db
+        )
+    except ValueError as exc:
+        message = str(exc)
+        status_code = status.HTTP_403_FORBIDDEN if "participant" in message else status.HTTP_404_NOT_FOUND
+        raise HTTPException(status_code=status_code, detail=message) from exc
+
+
 @router.get("/{negotiation_id}/document/pdf")
 async def download_negotiation_document_pdf(
     negotiation_id: UUID,
@@ -121,7 +139,7 @@ async def download_negotiation_document_pdf(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agreement document not generated")
     filename = f"{document.document_number}.pdf"
     return StreamingResponse(
-        BytesIO(service.agreement_pdf(document.content_markdown)),
+        BytesIO(agreement_pdf(document.content_markdown)),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

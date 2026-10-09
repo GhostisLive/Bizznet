@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Sidebar from "@/components/Sidebar";
 import { useAuth } from "@/lib/AuthProvider";
 import { useCurrentOrg } from "@/lib/useCurrentOrg";
-import { api } from "@/lib/api";
+import { api, Certification } from "@/lib/api";
 import {
   Building2,
   ShieldCheck,
@@ -40,6 +40,7 @@ export default function CompanyAuditPage() {
   const [dataLoading, setDataLoading] = useState(true);
   const [auditors, setAuditors] = useState<{ id: string; name: string }[]>([]);
   const [auditRequests, setAuditRequests] = useState<Awaited<ReturnType<typeof api.getCompanyAuditRequests>>>([]);
+  const [certifications, setCertifications] = useState<Certification[]>([]);
   const [showRequestForm, setShowRequestForm] = useState(false);
   const [selectedAuditor, setSelectedAuditor] = useState("");
   const [requestType, setRequestType] = useState<"company" | "labour" | "carbon">("company");
@@ -53,13 +54,17 @@ export default function CompanyAuditPage() {
     async function fetchData() {
       setDataLoading(true);
 
-      const data = await api.getProvenanceRecords();
+      const [data, companyCertifications] = await Promise.all([
+        api.getProvenanceRecords(),
+        api.getCompanyCertifications(),
+      ]);
       // Filter to company-related records using backend data
       const companyData = (data || []).filter(
-        (r: any) => r.payload?.category === "company" || r.payload?.trust_score !== undefined
+        (r) => r.payload?.category === "company" || r.payload?.trust_score !== undefined
       );
 
       setProvenanceRecords(companyData);
+      setCertifications(companyCertifications);
       if (org?.role !== "auditor") {
         const [availableAuditors, requests] = await Promise.all([
           api.getAuditors(),
@@ -82,9 +87,13 @@ export default function CompanyAuditPage() {
   const trustScores = companyRecords
     .map((r) => r.payload?.trust_score)
     .filter((s): s is number => s !== undefined && s !== null);
+  const certificateScores = certifications
+    .map((certificate) => certificate.score)
+    .filter((score): score is number => score !== null);
+  const displayedScores = trustScores.length > 0 ? trustScores : certificateScores;
   const avgTrustScore =
-    trustScores.length > 0
-      ? (trustScores.reduce((a, b) => a + b, 0) / trustScores.length).toFixed(1)
+    displayedScores.length > 0
+      ? (displayedScores.reduce((a, b) => a + b, 0) / displayedScores.length).toFixed(1)
       : null;
 
   const latestRecord = companyRecords.length > 0
@@ -97,7 +106,7 @@ export default function CompanyAuditPage() {
     orgStatus === "suspended" ? "Suspended" : "Pending Verification";
 
   const auditStatus: "3rd-Party Audited" | "Voluntary" | "Not Verified" =
-    companyRecords.some((r) => r.type === "verified" || r.type === "audited")
+    certifications.length > 0 || companyRecords.some((r) => r.type === "verified" || r.type === "audited")
       ? "3rd-Party Audited"
       : companyRecords.length > 0
         ? "Voluntary"
@@ -108,7 +117,7 @@ export default function CompanyAuditPage() {
   const solvency = latestRecord?.payload?.solvency ?? "—";
 
   const hasData = org !== null;
-  const hasChartData = companyRecords.length > 0;
+  const hasChartData = companyRecords.length > 0 || certifications.length > 0;
   const isLoading = authLoading || dataLoading;
 
   if (isLoading) {
@@ -171,6 +180,57 @@ export default function CompanyAuditPage() {
             </section>
           )}
         </div>
+
+        <section className="rounded-2xl border border-[#E8E0D4] bg-white p-6 shadow-sm">
+          <div className="flex items-start justify-between gap-4 border-b border-[#E8E0D4] pb-4">
+            <div>
+              <h2 className="text-xl font-extrabold">Audit certificates</h2>
+              <p className="mt-1 text-xs font-medium text-[#8A7E6E]">
+                Certificates issued by independent auditors for this organization
+              </p>
+            </div>
+            <FileText size={22} className="text-[#2E7D5B]" />
+          </div>
+          {certifications.length > 0 ? (
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {certifications.map((certificate) => (
+                <article key={certificate.id} className="rounded-xl border border-[#2E7D5B]/25 bg-[#EEF7F2] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-mono font-bold uppercase tracking-wide text-[#2E7D5B]">
+                        {certificate.audit_type} audit certificate
+                      </p>
+                      <p className="mt-1 font-mono text-sm font-extrabold text-[#2C2418]">
+                        {certificate.certificate_number}
+                      </p>
+                    </div>
+                    <CheckCircle2 size={20} className="text-[#2E7D5B]" />
+                  </div>
+                  <div className="mt-4 grid grid-cols-3 gap-3 text-xs">
+                    <div>
+                      <p className="text-[#6B6257]">Score</p>
+                      <p className="mt-1 text-lg font-extrabold text-[#2E7D5B]">{certificate.score ?? "—"}/100</p>
+                    </div>
+                    <div>
+                      <p className="text-[#6B6257]">Issued</p>
+                      <p className="mt-1 font-bold text-[#2C2418]">{new Date(certificate.issued_at).toLocaleDateString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-[#6B6257]">Expires</p>
+                      <p className="mt-1 font-bold text-[#2C2418]">
+                        {certificate.expires_at ? new Date(certificate.expires_at).toLocaleDateString() : "No expiry"}
+                      </p>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 text-sm font-semibold text-[#8A7E6E]">
+              No auditor certificate has been issued yet.
+            </p>
+          )}
+        </section>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white border border-[#E8E0D4] rounded-2xl p-6 shadow-sm">

@@ -102,21 +102,22 @@ export default function AuditorDashboardPage() {
 
   useEffect(() => {
     if (currentOrg.loading) return;
-    setLoadError(null);
-    Promise.allSettled([
-      api.getAuditorOverview(),
-      api.getAuditRequests(),
-      api.getAuditLogs(),
-      api.getCertifications(),
-    ]).then(([metricsResult, requestsResult, logsResult, certificatesResult]) => {
-        const errors: string[] = [];
-        if (metricsResult.status === "fulfilled") {
-          setOverview(metricsResult.value);
-        } else {
-          errors.push("overview");
-        }
-        if (requestsResult.status === "fulfilled") {
-          setAudits(requestsResult.value.map((item) => ({
+    const loadData = async () => {
+      setLoadError(null);
+      const [metricsResult, requestsResult, logsResult, certificatesResult] = await Promise.allSettled([
+        api.getAuditorOverview(),
+        api.getAuditRequests(),
+        api.getAuditLogs(),
+        api.getCertifications(),
+      ]);
+      const errors: string[] = [];
+      if (metricsResult.status === "fulfilled") {
+        setOverview(metricsResult.value);
+      } else {
+        errors.push("overview");
+      }
+      if (requestsResult.status === "fulfilled") {
+        setAudits(requestsResult.value.map((item) => ({
           id: item.id,
           company: item.company.name,
           type: typeName(item.audit_type),
@@ -126,12 +127,12 @@ export default function AuditorDashboardPage() {
           status: item.status === "in_progress" ? "In progress" : item.status === "completed" ? "Completed" : "Pending",
           initials: item.company.name.slice(0, 2).toUpperCase(),
           tone: "bg-[#E6EEF8] text-[#315A87]",
-          })));
-        } else {
-          errors.push("audit requests");
-        }
-        if (logsResult.status === "fulfilled") {
-          setPastAuditRecords(logsResult.value.map((item) => ({
+        })));
+      } else {
+        errors.push("audit requests");
+      }
+      if (logsResult.status === "fulfilled") {
+        setPastAuditRecords(logsResult.value.map((item) => ({
           id: item.id,
           company: item.company.name,
           type: typeName(item.audit_type),
@@ -140,12 +141,12 @@ export default function AuditorDashboardPage() {
           findings: item.findings || "No findings recorded",
           contract: item.digital_contract_id || "Not attached",
           contractStatus: item.digital_contract_id ? "Attached" : "Not attached",
-          })));
-        } else {
-          errors.push("audit logs");
-        }
-        if (certificatesResult.status === "fulfilled") {
-          setCertificates(certificatesResult.value.map((item) => ({
+        })));
+      } else {
+        errors.push("audit logs");
+      }
+      if (certificatesResult.status === "fulfilled") {
+        setCertificates(certificatesResult.value.map((item) => ({
           id: item.certificate_number,
           company: item.company.name,
           type: typeName(item.audit_type),
@@ -153,14 +154,15 @@ export default function AuditorDashboardPage() {
           expires: item.expires_at ? new Date(item.expires_at).toLocaleDateString() : "No expiry",
           status: item.status === "active" ? "Active" : "Expiring soon",
           score: item.score ?? 0,
-          })));
-        } else {
-          errors.push("certificates");
-        }
-        if (errors.length > 0) {
-          setLoadError(`Unable to load ${errors.join(", ")}. Refresh and try again.`);
-        }
-      });
+        })));
+      } else {
+        errors.push("certificates");
+      }
+      if (errors.length > 0) {
+        setLoadError(`Unable to load ${errors.join(", ")}. Refresh and try again.`);
+      }
+    };
+    loadData();
   }, [currentOrg.loading, refreshKey]);
 
   useEffect(() => {
@@ -213,6 +215,13 @@ export default function AuditorDashboardPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            <Link
+              href="/auditor/create-audit-request"
+              className="inline-flex items-center gap-2 rounded-xl bg-[#2E7D5B] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#247A53] transition-colors"
+            >
+              <Plus size={14} />
+              Create audit request
+            </Link>
             <button className="hidden h-10 items-center gap-2 rounded-xl border border-[#E8E0D4] bg-white px-4 text-sm font-bold text-[#5C5040] shadow-sm transition hover:border-[#CFC3B2] sm:flex">
               <Download size={16} /> Export report
             </button>
@@ -299,7 +308,21 @@ export default function AuditorDashboardPage() {
                       <td className="px-4 py-4 text-sm font-semibold text-[#5C5040]">{audit.due}</td>
                       <td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-[11px] font-mono font-bold ${statusClasses(audit.status)}`}>{audit.status}</span></td>
                       <td className="px-4 py-4 text-sm font-mono font-bold">{audit.score ? `${audit.score}/100` : "—"}</td>
-                      <td className="px-5 py-4 text-right"><button aria-label={`Open ${audit.company}`} className="rounded-lg p-2 text-[#A89B8A] transition hover:bg-[#F5F0E8] hover:text-[#2C2418]"><ChevronRight size={17} /></button></td>
+                      <td className="px-5 py-4 text-right">
+                        {audit.status === "Pending" || audit.status === "In progress" ? (
+                          <Link
+                            href={`/auditor/perform-audit?requestId=${audit.id}`}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-[#2E7D5B] hover:bg-[#247A53] transition-colors"
+                          >
+                            <FileCheck2 size={12} />
+                            Perform audit
+                          </Link>
+                        ) : (
+                          <button aria-label={`Open ${audit.company}`} className="rounded-lg p-2 text-[#A89B8A] transition hover:bg-[#F5F0E8] hover:text-[#2C2418]">
+                            <ChevronRight size={17} />
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

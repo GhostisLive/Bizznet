@@ -399,6 +399,14 @@ class ApiClient {
     return this.request('/auditor/audit-requests', { method: 'POST', body: JSON.stringify(input) });
   }
 
+  async updateAuditRequest(requestId: string, input: { status: 'pending' | 'in_progress' | 'completed' }): Promise<AuditRequest> {
+    return this.request(`/auditor/audit-requests/${requestId}`, { method: 'PATCH', body: JSON.stringify(input) });
+  }
+
+  async createAuditLog(input: { request_id: string; score: number; findings: string; recommendations: string }): Promise<AuditLog> {
+    return this.request('/auditor/audit-logs', { method: 'POST', body: JSON.stringify(input) });
+  }
+
   async getAuditorMessages(companyId: string): Promise<AuditorMessage[]> {
     return this.request(`/auditor/conversations/${companyId}/messages`);
   }

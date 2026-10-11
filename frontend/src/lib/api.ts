@@ -1,4 +1,4 @@
-const CONFIGURED_API_BASE = process.env.NEXT_PUBLIC_API_URL;
+const CONFIGURED_API_BASE = import.meta.env.VITE_API_URL;
 
 function getApiBase(): string {
   if (typeof window !== "undefined") {

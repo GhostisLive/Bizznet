@@ -1,5 +1,3 @@
-"use client";
-
 import { ShieldCheck, ClipboardCheck, Layers, ArrowRight } from "lucide-react";
 
 const listings = [

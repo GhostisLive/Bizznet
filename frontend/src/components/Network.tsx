@@ -1,5 +1,3 @@
-"use client";
-
 import { Factory, Truck, Store, Pickaxe, Package } from "lucide-react";
 
 const roles = [

@@ -1,5 +1,3 @@
-"use client";
-
 import { ShieldCheck, ClipboardCheck, FileText, ArrowRight } from "lucide-react";
 
 const grades = [

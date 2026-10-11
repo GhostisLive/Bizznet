@@ -1,5 +1,3 @@
-"use client";
-
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
 import { api, isAuthError } from "@/lib/api";
 interface User { id: string; email: string; aud: string; email_confirmed_at?: string; phone?: string; phone_confirmed_at?: string; confirmed_at?: string; last_sign_in_at?: string; app_metadata: Record<string, unknown>; user_metadata: Record<string, unknown>; created_at: string; updated_at: string; is_anonymous: boolean; }

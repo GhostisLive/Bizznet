@@ -1,8 +1,5 @@
-"use client";
-
 import { useState } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   Store,
@@ -18,9 +15,11 @@ import {
   MessageSquare,
   ShieldCheck,
   FileText,
-  Award
+  Award,
+  LogOut
 } from "lucide-react";
 import Logo from "@/components/Logo";
+import { useAuth } from "@/lib/AuthProvider";
 
 interface SidebarProps {
   currentRole?: string;
@@ -40,7 +39,8 @@ export default function Sidebar({
   orgName = "Manufacturer Alpha",
   nodeId = "BIZZ-MFG-0914"
 }: SidebarProps) {
-  const pathname = usePathname();
+  const location = useLocation();
+  const { signOut } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const businessNavItems: NavItem[] = [
@@ -69,7 +69,7 @@ export default function Sidebar({
     <>
       {/* Mobile Top Navigation Header with Menu Toggle */}
       <div className="lg:hidden bg-[#2C2418] text-white px-6 py-4 flex items-center justify-between sticky top-0 z-50 border-b border-[#4E4433]">
-        <Link href={isAuditor ? "/auditor-dashboard" : "/dashboard"} className="flex items-center gap-2.5 font-sans font-bold text-xl">
+        <Link to={isAuditor ? "/auditor-dashboard" : "/dashboard"} className="flex items-center gap-2.5 font-sans font-bold text-xl">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#EFE9DF] shadow-xs">
             <Logo size={20} />
           </div>
@@ -93,11 +93,11 @@ export default function Sidebar({
           </div>
           {navItems.map((item) => {
             const Icon = item.icon;
-            const active = pathname === item.href.split("#")[0];
+            const active = location.pathname === item.href.split("#")[0];
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                to={item.href}
                 onClick={() => setMobileOpen(false)}
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl text-base font-bold transition-all ${
                   active
@@ -115,6 +115,16 @@ export default function Sidebar({
               </Link>
             );
           })}
+          <button
+            onClick={async () => {
+              await signOut();
+              setMobileOpen(false);
+            }}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-base font-bold transition-all text-[#A89B8A] hover:text-white hover:bg-[#4E4433] mt-4"
+          >
+            <LogOut size={22} />
+            <span>Sign Out</span>
+          </button>
         </div>
       )}
 
@@ -123,7 +133,7 @@ export default function Sidebar({
         <div className="space-y-8">
           
           {/* Brand Header */}
-          <Link href={isAuditor ? "/auditor-dashboard" : "/dashboard"} className="flex items-center gap-3 pb-6 border-b border-[#4E4433] group">
+          <Link to={isAuditor ? "/auditor-dashboard" : "/dashboard"} className="flex items-center gap-3 pb-6 border-b border-[#4E4433] group">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EFE9DF] shadow-md group-hover:scale-105 transition-transform">
             {isAuditor ? <ShieldCheck size={25} className="text-[#6B5B3E]" /> : <Logo size={26} />}
             </div>
@@ -147,11 +157,11 @@ export default function Sidebar({
           <nav className="space-y-2">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const active = pathname === item.href.split("#")[0];
+              const active = location.pathname === item.href.split("#")[0];
               return (
                 <Link
                   key={item.href}
-                  href={item.href}
+                  to={item.href}
                   className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-base font-bold transition-all ${
                     active
                       ? "bg-[#6B5B3E] text-white shadow-lg shadow-[#6B5B3E]/25"
@@ -172,10 +182,17 @@ export default function Sidebar({
         </div>
 
         {/* Sidebar Footer Node Info */}
-        <div className="pt-4 border-t border-[#4E4433]">
+        <div className="pt-4 border-t border-[#4E4433] space-y-3">
           <div className="p-3 rounded-lg bg-[#4E4433] text-xs font-mono text-[#A89B8A]">
             Enterprise ID: <strong className="text-white font-bold">{nodeId}</strong>
           </div>
+          <button
+            onClick={signOut}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-base font-bold transition-all text-[#A89B8A] hover:text-white hover:bg-[#4E4433]"
+          >
+            <LogOut size={22} />
+            <span>Sign Out</span>
+          </button>
         </div>
       </aside>
     </>

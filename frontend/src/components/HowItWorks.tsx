@@ -1,5 +1,3 @@
-"use client";
-
 import { Building2, Users, ShieldCheck, MessageSquare, BarChart3 } from "lucide-react";
 
 const steps = [
